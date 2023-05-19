@@ -1,0 +1,6 @@
+dependencies/
+CMakeFiles/
+build/
+.vscode/
+
+*.a

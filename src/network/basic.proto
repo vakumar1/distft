@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package basic;
+
+service BasicService {
+  rpc AddOne(AddOneRequest) returns (AddOneResponse);
+}
+
+message AddOneRequest {
+  int32 value = 1;
+}
+
+message AddOneResponse {
+  int32 result = 1;
+}
