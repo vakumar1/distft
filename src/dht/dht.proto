@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package dht;
+
+service DHTService {
+  rpc FindNode(FindNodeRequest) returns (FindNodeResponse);
+  rpc FindValue(FindValueRequest) returns (FindValueResponse);
+  rpc Store(StoreRequest) returns (StoreResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Republish(RepublishRequest) returns (RepublishResponse);
+}
+
+message FindNodeRequest {
+
+}
+
+message FindNodeResponse {
+  
+}
+
+message FindValueRequest {
+
+}
+
+message FindValueResponse {
+  
+}
+
+message StoreRequest {
+
+}
+
+message StoreResponse {
+
+}
+
+message PingRequest {
+  bytes recv_key = 1;
+}
+
+message PingResponse {
+  bytes recv_key = 1;
+  bool success = 2;
+}
+
+message RepublishRequest {
+
+}
+
+message RepublishResponse {
+
+}

@@ -1,10 +1,55 @@
-#include <string.h>
+#include <string>
 #include <bitset>
+#include <random>
+#include <iostream>
 
-const unsigned int KEYBITS = 160;
-const unsigned int KEYBYTES = KEYBITS / 8;
+#define KEYBITS 160
+
+//
+// Keys and Distances
+//
 
 typedef std::bitset<KEYBITS> Key;
+struct Dist {
+  Dist() {
+    value = std::bitset<KEYBITS>().set();
+  };
+  Dist(Key k1, Key k2) {
+    value = k1 ^ k2;
+  };
+  std::bitset<KEYBITS> value;
+  const bool operator < (const Dist& d) const;
+  const bool operator >= (const Dist& d) const;
+};
 
-// generate a random 160-bit key and write to BUFFER
-void random_key(Key& buffer);
+// generate a random 160-bit key
+Key random_key();
+
+// return distance between 2 keys
+Dist key_dist(Key k1, Key k2);
+
+//
+// Peers and Chunks
+//
+
+struct Peer {
+  Peer(Key key, std::string endpoint) {
+    this->key = key;
+    this->endpoint = endpoint;
+  }
+  std::string endpoint;
+  Key key;
+};
+
+struct Chunk {
+  Chunk() {
+    this->filepath = "";
+  };
+  Chunk(std::string fp) {
+    filepath = fp;
+  };
+  std::string filepath;
+  bool is_empty() {
+    return filepath.empty();
+  }
+};

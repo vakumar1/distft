@@ -1,5 +1,4 @@
 #include "router.h"
-#include "key.h"
 
 #include <string.h>
 #include <deque>
@@ -8,22 +7,24 @@
 // ROUTER
 //
 
-Router::Router(Key& self_key, Key& other_key) {
-  this->key = self_key;
-  this->table = new BinaryTree(0, NULL);
-  this->insert_key(other_key);
+Router::Router(Key& self_key, std::string& self_endpoint, Key& other_key, std::string& other_endpoint) {
+  // initialize self peer and table with initial peer
+  this->self_peer = new Peer(self_key, self_endpoint);
+  this->table = new BinaryTree(KEYBITS - 1, NULL);
+  this->insert_peer(other_key, other_endpoint);
 }
 
 Router::~Router() {
+  delete this->self_peer;
   delete this->table;
 }
 
-void Router::insert_key(Key& key) {
+void Router::insert_peer(Key& peer_key, std::string endpoint) {
   bool found = true;
   BinaryTree* tree = this->table;
   while (true) {
-    bool key_bit = key.test(tree->split_bit_index);
-    bool key_match = key_bit == this->key.test(tree->split_bit_index);
+    bool key_bit = peer_key[tree->split_bit_index];
+    bool key_match = key_bit == this->self_peer->key[tree->split_bit_index];
 
     // traverse until we hit a leaf
     if (!tree->leaf) {
@@ -36,8 +37,9 @@ void Router::insert_key(Key& key) {
       break;
     }
 
-    // if prefixes match, split tree and continue traversing
-    if (key_match && tree->split_bit_index < KEYBITS) {
+    // if prefixes match (and we haven't exhausted all the bits in the key), 
+    // split tree and continue traversing
+    if (key_match && tree->split_bit_index > 0) {
       tree->split();
       tree = key_bit ? tree->one_tree : tree->zero_tree;
       continue;
@@ -48,18 +50,49 @@ void Router::insert_key(Key& key) {
     break;
   }
 
-  // insert and increment key counts if an open kbucket was found
+  // create Peer and insert into tree
   if (found) {
-    tree->kbucket.push_back(key);
-    while (tree != NULL) {
-      tree->key_count++;
-      tree = tree->parent;
+    Peer* peer = new Peer(peer_key, endpoint);
+    tree->kbucket.push_front(peer);
+    int size_diff = 1;
+
+    // evict peers if size exceeds KBUCKET_MAX
+    while (tree->kbucket.size() > KBUCKET_MAX) {
+      Peer* evicted_peer = tree->kbucket.back();
+      tree->kbucket.pop_back();
+      delete evicted_peer;
+      size_diff--;
+    }
+
+    // adjust key counts
+    if (size_diff != 0) {
+      while (tree != NULL) {
+        tree->key_count += size_diff;
+        tree = tree->parent;
+      }
     }
   }
 }
 
-void Router::closest_keys(Key& key, unsigned int n, std::deque<Key>& buffer) {
-  this->table->closest_keys(key, n, buffer);
+void Router::closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer) {
+  this->table->tree_closest_peers(search_key, n, buffer);
+}
+
+void Router::all_peers(std::deque<Peer*>& buffer) {
+  this->table->tree_closest_peers(this->self_peer->key, this->table->key_count, buffer);
+}
+
+Peer* Router::get_peer(Key& search_key) {
+  std::deque<Peer*> buffer;
+  this->closest_peers(search_key, 1, buffer);
+  if (buffer.empty() || buffer.at(0)->key != search_key) {
+    return NULL;
+  }
+  return buffer.at(0);
+}
+
+Peer* Router::get_self_peer() {
+  return this->self_peer;
 }
 
 //
@@ -76,6 +109,16 @@ Router::BinaryTree::BinaryTree(int split_bit_index, BinaryTree* parent) {
 };
 
 Router::BinaryTree::~BinaryTree() {
+  // delete peers in kbucket
+  if (this->leaf) {
+    while (!this->kbucket.empty()) {
+      Peer* peer = this->kbucket.front();
+      this->kbucket.pop_front();
+      delete peer;
+    }
+  }
+
+  // recursively delete sub-trees
   if (this->zero_tree != NULL) {
     delete this->zero_tree;
   }
@@ -87,18 +130,18 @@ Router::BinaryTree::~BinaryTree() {
 
 void Router::BinaryTree::split() {
   this->leaf = false;
-  this->zero_tree = new BinaryTree(this->split_bit_index + 1, this);
-  this->one_tree = new BinaryTree(this->split_bit_index + 1, this);
+  this->zero_tree = new BinaryTree(this->split_bit_index - 1, this);
+  this->one_tree = new BinaryTree(this->split_bit_index - 1, this);
   while (this->kbucket.size() > 0) {
-    Key key = this->kbucket.front();
+    Peer* peer = this->kbucket.front();
     this->kbucket.pop_front();
-    bool key_bit = key.test(this->split_bit_index + 1);
+    bool key_bit = peer->key[this->split_bit_index];
     BinaryTree* tree = key_bit ? this->one_tree : this->zero_tree;
-    tree->kbucket.push_back(key);
+    tree->kbucket.push_back(peer);
   }
 }
 
-void Router::BinaryTree::closest_keys(Key& key, unsigned int n, std::deque<Key>& buffer) {
+void Router::BinaryTree::tree_closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer) {
   // add at most n keys from a leaf to the buffer
   if (this->leaf) {
     for (int i = 0; i < n && i < this->kbucket.size(); i++) {
@@ -109,11 +152,11 @@ void Router::BinaryTree::closest_keys(Key& key, unsigned int n, std::deque<Key>&
 
   // try to add n keys from the matching tree
   // add (potentially) remaining keys from the mismatched tree
-  bool key_bit = key.test(this->split_bit_index);
+  bool key_bit = search_key[this->split_bit_index];
   BinaryTree* preferred_tree = key_bit ? this->one_tree : this->zero_tree;
   BinaryTree* alternate_tree = key_bit ? this->zero_tree : this->one_tree;
-  preferred_tree->closest_keys(key, n, buffer);
+  preferred_tree->tree_closest_peers(search_key, n, buffer);
   if (n < preferred_tree->key_count) {
-    alternate_tree->closest_keys(key, preferred_tree->key_count - n, buffer);
+    alternate_tree->tree_closest_peers(search_key, preferred_tree->key_count - n, buffer);
   }
 }

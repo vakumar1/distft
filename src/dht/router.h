@@ -1,14 +1,14 @@
-#include "peer.h"
 #include "key.h"
 
 #include <deque>
+#include <unordered_map>
 
 #define KBUCKET_MAX 5
 
 // Router: stores all key->peer mappings in an unbalanced binary tree that allows easy
 // querying of "close" peers
 // Kademlia uses k1 ^ k2 to measure distance between any two keys
-// practically keys are grouped by the least significant set bit of key ^ other (i.e., the lowest i
+// practically keys are grouped by the least significant set bit of key ^ other (i.e., the highest i
 // such that k1[i] != k2[i])
 class Router {
 private:
@@ -28,7 +28,10 @@ private:
     void split();
 
     // get the (potentially less than) n closest keys to the key
-    void closest_keys(Key& key, unsigned int n, std::deque<Key>& buffer);
+    void tree_closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
+
+    // get all peers in the tree
+    void tree_all_peers(std::deque<Peer*>& buffer);
 
     bool leaf;
     unsigned int split_bit_index;
@@ -36,28 +39,34 @@ private:
     BinaryTree* parent;
     BinaryTree* zero_tree;
     BinaryTree* one_tree;
-    std::deque<Key> kbucket;
+    std::deque<Peer*> kbucket;
     
   };
 
-  Key key;
+  Peer* self_peer;
   BinaryTree* table;
 
-  void split_tree(BinaryTree* tree);
-
+  
 public:
-  Router(Key& self_key, Key& other_key);
+  Router(Key& self_key, std::string& self_endpoint, Key& other_key, std::string& other_endpoint);
   ~Router();
 
   // attempt to add key into correct kbucket in table
-  // they insertion may fail if the designated kbucket is full
-  void insert_key(Key& key);
+  // the insertion may fail if the designated kbucket is full
+  void insert_peer(Key& peer_key, std::string endpoint);
 
   // remove the key from the table
-  void remove_key(Key& key);
+  void remove_peer(Peer* peer);
 
   // return vector of (potentially less than) n closest peers to the given keys
-  void closest_keys(Key& key, unsigned int n, std::deque<Key>& buffer);
+  void closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
+
+  // return all keys in the router
+  void all_peers(std::deque<Peer*>& buffer);
+
+  Peer* get_peer(Key& key);
+
+  Peer* get_self_peer();
 
 };
 
