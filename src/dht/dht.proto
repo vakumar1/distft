@@ -11,36 +11,37 @@ service DHTService {
 }
 
 message FindNodeRequest {
-
+  bytes search_key = 1; 
 }
 
 message FindNodeResponse {
-  
+  repeated bytes closest_keys = 2;
 }
 
 message FindValueRequest {
-
+  bytes search_key = 1;
 }
 
 message FindValueResponse {
-  
+  bool found_value = 1;
+  bytes data = 2;
+  repeated bytes closest_keys = 3;
 }
 
 message StoreRequest {
-
+  bytes chunk_key = 1;
+  bytes data = 2;
 }
 
 message StoreResponse {
-
+  bool store_success = 1;
 }
 
 message PingRequest {
-  bytes recv_key = 1;
 }
 
 message PingResponse {
   bytes recv_key = 1;
-  bool success = 2;
 }
 
 message RepublishRequest {

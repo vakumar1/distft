@@ -56,7 +56,7 @@ Session::~Session() {
 
 }
 
-void Session::set(Key search_key, Chunk chunk) {
+void Session::set(Key search_key, const std::byte (&data)[CHUNK_BYTES]) {
   this->node_lookup(search_key);
 
   // select the ALPHA closest keys to store the chunk
@@ -66,14 +66,18 @@ void Session::set(Key search_key, Chunk chunk) {
     // TODO: send async store RPC to closest peers
 
   }
+
+  // TODO: figure out whether key should also be set locally
 }
 
-Chunk Session::get(Key search_key) {
+bool Session::get(Key search_key, std::byte (&data)[CHUNK_BYTES]) {
   // check if the key is cached locally
   if (this->chunks.count(search_key) > 0) {
-    return *this->chunks.at(search_key);
+    Chunk* found_chunk = this->chunks[search_key];
+    std::memcpy(data, found_chunk->data, CHUNK_BYTES);
+    return true;
   }
-  return this->value_lookup(search_key);
+  return this->value_lookup(search_key, data);
   
 }
 
@@ -166,7 +170,7 @@ void Session::node_lookup(Key node_key) {
   }
 }
 
-Chunk Session::value_lookup(Key chunk_key) {
+bool Session::value_lookup(Key chunk_key, std::byte (&data)[CHUNK_BYTES]) {
   std::unordered_set<Key> queried;
   std::deque<Peer*> closest_peers;
   Dist prev_dist = Dist();
@@ -192,18 +196,15 @@ Chunk Session::value_lookup(Key chunk_key) {
 
       // TODO: send async find value RPC to get K closest keys the peer knows of
       // to refresh the Router
-      // immediately return if the peer returns a value
-      Chunk value;
-      if (!value.is_empty()) {
-        return value;
-      }
+      // immediately return if the peer returns a value      
+      return true;
 
       queried.insert(other_peer->key);
     }
   }
 
   // failed to find key
-  return Chunk();
+  return false;
 }
 
 
@@ -231,12 +232,33 @@ void Session::shutdown_server() {
 grpc::Status Session::FindNode(grpc::ServerContext* context, 
                             const dht::FindNodeRequest* request,
                             dht::FindNodeResponse* response) {
+  
+  Key search_key = Key(request->search_key());
+  std::deque<Peer*> closest_keys;
+  this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
+  for (Peer* peer : closest_keys) {
+    response->add_closest_keys(peer->key.to_string());
+  }
   return grpc::Status::OK;
 }
 
 grpc::Status Session::FindValue(grpc::ServerContext* context, 
                         const dht::FindValueRequest* request,
                         dht::FindValueResponse* response) {
+
+  Key search_key = Key(request->search_key());
+  if (this->chunks.count(search_key) > 0) {
+    Chunk* found_chunk = this->chunks[search_key];
+    response->mutable_data()->assign(found_chunk->data, found_chunk->data + CHUNK_BYTES);
+    response->set_found_value(true);
+    return grpc::Status::OK;
+  }
+  std::deque<Peer*> closest_keys;
+  this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
+  for (Peer* peer : closest_keys) {
+    response->add_closest_keys(peer->key.to_string());
+  }
+  response->set_found_value(false);
   return grpc::Status::OK;
 
 }
@@ -244,21 +266,18 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
 grpc::Status Session::Store(grpc::ServerContext* context, 
                         const dht::StoreRequest* request,
                         dht::StoreResponse* response) {
+  
+  Key chunk_key = Key(request->chunk_key());
+  std::byte* data = new std::byte[CHUNK_BYTES];
+  std::memcpy(data, request->data().data(), CHUNK_BYTES);
+  Chunk* chunk = new Chunk(chunk_key, data);
+  this->chunks[chunk_key] = chunk;
   return grpc::Status::OK;
 }
 
 grpc::Status Session::Ping(grpc::ServerContext* context, 
                         const dht::PingRequest* request,
                         dht::PingResponse* response) {
-  bool success = false;
-  Key recv_key = Key(request->recv_key());
-  printf(this->router->get_self_peer()->key.to_string().c_str());
-  if (this->dying || recv_key != this->router->get_self_peer()->key) {
-    success = false;
-  } else {
-    success = true;
-  }
-  response->set_success(success);
   response->set_recv_key(this->router->get_self_peer()->key.to_string());
   return grpc::Status::OK;
 }

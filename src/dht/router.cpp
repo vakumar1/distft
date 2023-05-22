@@ -138,6 +138,7 @@ void Router::BinaryTree::split() {
     bool key_bit = peer->key[this->split_bit_index];
     BinaryTree* tree = key_bit ? this->one_tree : this->zero_tree;
     tree->kbucket.push_back(peer);
+    tree->key_count++;
   }
 }
 

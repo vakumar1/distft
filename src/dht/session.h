@@ -1,4 +1,5 @@
 #include "router.h"
+#include "chunk.h"
 
 #include <grpcpp/grpcpp.h>
 #include "dht.pb.h"
@@ -30,7 +31,7 @@ private:
   // node lookup algorithms
   void self_lookup(Key self_key);
   void node_lookup(Key node_key);
-  Chunk value_lookup(Key chunk_key);
+  bool value_lookup(Key chunk_key, std::byte (&data)[CHUNK_BYTES]);
 
   // RPC handler
   void init_server(std::string server_address);
@@ -61,10 +62,10 @@ public:
   // destructor: tear down session and re-distribute keys to other peers
   ~Session();
 
-  // set key->value in DHT
-  void set(Key key, Chunk chunk);
+  // add chunk data to DHT
+  void set(Key search_key, const std::byte (&data)[CHUNK_BYTES]);
 
   // get value from DHT
-  // returns empty string if key was not found
-  Chunk get(Key key);
+  // returns false if key was not found
+  bool get(Key search_key, std::byte (&data)[CHUNK_BYTES]);
 };

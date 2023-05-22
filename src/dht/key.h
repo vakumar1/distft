@@ -41,15 +41,3 @@ struct Peer {
   Key key;
 };
 
-struct Chunk {
-  Chunk() {
-    this->filepath = "";
-  };
-  Chunk(std::string fp) {
-    filepath = fp;
-  };
-  std::string filepath;
-  bool is_empty() {
-    return filepath.empty();
-  }
-};
