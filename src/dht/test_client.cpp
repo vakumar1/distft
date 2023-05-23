@@ -11,7 +11,7 @@ int main() {
   std::unique_ptr<dht::DHTService::Stub> stub = dht::DHTService::NewStub(channel);
 
   dht::PingRequest req;
-  req.set_recv_key(Key().set().to_string());
+  req.set_send_key(Key().set().to_string());
 
   dht::PingResponse res;
   grpc::ClientContext context;

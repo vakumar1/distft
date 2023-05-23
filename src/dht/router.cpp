@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <deque>
+#include <algorithm>
 
 //
 // ROUTER
@@ -22,7 +23,7 @@ Router::~Router() {
 void Router::insert_peer(Key& peer_key, std::string endpoint) {
   bool found = true;
   BinaryTree* tree = this->table;
-  while (true) {
+  for (int i = KEYBITS - 1; i >= 0; i--) {
     bool key_bit = peer_key[tree->split_bit_index];
     bool key_match = key_bit == this->self_peer->key[tree->split_bit_index];
 
@@ -72,6 +73,50 @@ void Router::insert_peer(Key& peer_key, std::string endpoint) {
       }
     }
   }
+}
+
+void Router::remove_peer(Key& peer_key) {
+  BinaryTree* tree = this->table;
+  for (int i = KEYBITS - 1; i >= 0; i--) {
+    bool key_bit = peer_key[tree->split_bit_index];
+    bool key_match = key_bit == this->self_peer->key[tree->split_bit_index];
+
+    // traverse until we hit a leaf
+    if (!tree->leaf) {
+      tree = key_bit ? tree->one_tree : tree->zero_tree;
+      continue;
+    }
+
+    // if peer is contained at this leaf, remove it
+    for (int i = 0; i < tree->kbucket.size(); i++) {
+      if (tree->kbucket.at(i)->key == peer_key) {
+        tree->kbucket.erase(tree->kbucket.begin() + i); 
+        return;
+      }
+    }
+  }
+}
+
+void Router::refresh_peer(Key& peer_key) {
+  BinaryTree* tree = this->table;
+  for (int i = KEYBITS - 1; i >= 0; i--) {
+    bool key_bit = peer_key[tree->split_bit_index];
+
+    // traverse until we hit a leaf
+    if (!tree->leaf) {
+      tree = key_bit ? tree->one_tree : tree->zero_tree;
+      continue;
+    }
+
+    // if peer is contained at this leaf, move it to the front of the kbucket
+    for (int i = 0; i < tree->kbucket.size(); i++) {
+      if (tree->kbucket.at(i)->key == peer_key) {
+        std::rotate(tree->kbucket.begin(), tree->kbucket.begin() + i, tree->kbucket.begin() + i + 1);
+        return;
+      }
+    }
+  }
+
 }
 
 void Router::closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer) {

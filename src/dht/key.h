@@ -1,3 +1,6 @@
+#ifndef KEY_H
+#define KEY_H
+
 #include <string>
 #include <bitset>
 #include <random>
@@ -25,8 +28,6 @@ struct Dist {
 // generate a random 160-bit key
 Key random_key();
 
-// return distance between 2 keys
-Dist key_dist(Key k1, Key k2);
 
 //
 // Peers and Chunks
@@ -41,3 +42,4 @@ struct Peer {
   Key key;
 };
 
+#endif

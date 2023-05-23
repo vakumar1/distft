@@ -55,8 +55,10 @@ public:
   // the insertion may fail if the designated kbucket is full
   void insert_peer(Key& peer_key, std::string endpoint);
 
+  void refresh_peer(Key& peer_key);
+
   // remove the key from the table
-  void remove_peer(Peer* peer);
+  void remove_peer(Key& peer_key);
 
   // return vector of (potentially less than) n closest peers to the given keys
   void closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);

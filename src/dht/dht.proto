@@ -7,7 +7,8 @@ service DHTService {
   rpc FindValue(FindValueRequest) returns (FindValueResponse);
   rpc Store(StoreRequest) returns (StoreResponse);
   rpc Ping(PingRequest) returns (PingResponse);
-  rpc Republish(RepublishRequest) returns (RepublishResponse);
+  rpc RepublishInit(RepublishInitRequest) returns (RepublishInitResponse);
+  rpc RepublishData(RepublishDataRequest) returns (RepublishDataResponse);
 }
 
 message FindNodeRequest {
@@ -15,7 +16,7 @@ message FindNodeRequest {
 }
 
 message FindNodeResponse {
-  repeated bytes closest_keys = 2;
+  repeated Peer closest_peers = 1;
 }
 
 message FindValueRequest {
@@ -25,7 +26,7 @@ message FindValueRequest {
 message FindValueResponse {
   bool found_value = 1;
   bytes data = 2;
-  repeated bytes closest_keys = 3;
+  repeated Peer closest_peers = 3;
 }
 
 message StoreRequest {
@@ -38,16 +39,31 @@ message StoreResponse {
 }
 
 message PingRequest {
+  bytes send_key = 1;
 }
 
 message PingResponse {
   bytes recv_key = 1;
 }
 
-message RepublishRequest {
-
+message RepublishInitRequest {
+  bytes chunk_key = 1;
 }
 
-message RepublishResponse {
+message RepublishInitResponse {
+  bool continue_republish = 1;
+}
 
+message RepublishDataRequest {
+  bytes chunk_key = 1;
+  bytes data = 2;
+}
+
+message RepublishDataResponse {
+  bool republish_success = 1;
+}
+
+message Peer {
+  bytes key = 1;
+  string endpoint = 2;
 }

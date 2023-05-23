@@ -27,13 +27,14 @@ private:
   std::unordered_map<Key, Chunk*> chunks;
   std::unique_ptr<grpc::Server> server;
   std::thread server_thread;
+  std::deque<std::thread*> rpc_threads;
   
   // node lookup algorithms
   void self_lookup(Key self_key);
   void node_lookup(Key node_key);
-  bool value_lookup(Key chunk_key, std::byte (&data)[CHUNK_BYTES]);
+  bool value_lookup(Key chunk_key, std::byte** data_buffer);
 
-  // RPC handler
+  // RPC handlers
   void init_server(std::string server_address);
   void shutdown_server();
   void handler_thread_fn();
@@ -49,11 +50,24 @@ private:
   grpc::Status Ping(grpc::ServerContext* context, 
                           const dht::PingRequest* request,
                           dht::PingResponse* response) override;
-  grpc::Status Republish(grpc::ServerContext* context, 
-                          const dht::RepublishRequest* request,
-                          dht::RepublishResponse* response) override;
-
-  friend class DHTServiceImpl;
+  grpc::Status RepublishInit(grpc::ServerContext* context, 
+                          const dht::RepublishInitRequest* request,
+                          dht::RepublishInitResponse* response) override;
+  grpc::Status RepublishData(grpc::ServerContext* context, 
+                          const dht::RepublishDataRequest* request,
+                          dht::RepublishDataResponse* response) override;
+  
+  // RPC caller threads: republish + expired chunks, refresh nodes
+  void init_rpc_threads();
+  void shutdown_rpc_threads();
+  void republish_chunks_thread_fn();
+  void cleanup_chunks_thread_fn();
+  void refresh_peer_thread_fn();
+  void find_node(Peer* peer, Key& search_key, std::deque<Key> buffer);
+  bool find_value(Peer* peer, Key& search_key, std::byte** data_buffer, std::deque<Key> buffer);
+  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer);
+  void ping(Peer* peer);
+  void republish(Peer* peer, Key& chunk_key, std::byte* data_buffer);
 
 public:
   // constructor: set up session and initialize routing table with initial peer
@@ -63,9 +77,9 @@ public:
   ~Session();
 
   // add chunk data to DHT
-  void set(Key search_key, const std::byte (&data)[CHUNK_BYTES]);
+  void set(Key search_key, const std::byte* data);
 
   // get value from DHT
   // returns false if key was not found
-  bool get(Key search_key, std::byte (&data)[CHUNK_BYTES]);
+  bool get(Key search_key, std::byte** data_buffer);
 };

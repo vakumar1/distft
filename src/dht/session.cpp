@@ -56,7 +56,7 @@ Session::~Session() {
 
 }
 
-void Session::set(Key search_key, const std::byte (&data)[CHUNK_BYTES]) {
+void Session::set(Key search_key, const std::byte* data) {
   this->node_lookup(search_key);
 
   // select the ALPHA closest keys to store the chunk
@@ -70,14 +70,15 @@ void Session::set(Key search_key, const std::byte (&data)[CHUNK_BYTES]) {
   // TODO: figure out whether key should also be set locally
 }
 
-bool Session::get(Key search_key, std::byte (&data)[CHUNK_BYTES]) {
+bool Session::get(Key search_key, std::byte** data_buffer) {
   // check if the key is cached locally
   if (this->chunks.count(search_key) > 0) {
     Chunk* found_chunk = this->chunks[search_key];
-    std::memcpy(data, found_chunk->data, CHUNK_BYTES);
+    *data_buffer = new std::byte[CHUNK_BYTES];
+    std::memcpy(*data_buffer, found_chunk->data, CHUNK_BYTES);
     return true;
   }
-  return this->value_lookup(search_key, data);
+  return this->value_lookup(search_key, data_buffer);
   
 }
 
@@ -170,7 +171,7 @@ void Session::node_lookup(Key node_key) {
   }
 }
 
-bool Session::value_lookup(Key chunk_key, std::byte (&data)[CHUNK_BYTES]) {
+bool Session::value_lookup(Key chunk_key, std::byte** data_buffer) {
   std::unordered_set<Key> queried;
   std::deque<Peer*> closest_peers;
   Dist prev_dist = Dist();

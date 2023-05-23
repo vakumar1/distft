@@ -53,7 +53,7 @@ target_link_libraries(dht_grpc_proto
 # add_executable(${_target} "${_target}.cpp")
 set (SOURCES key.cpp router.cpp session.cpp)
 set (HEADERS key.h router.h session.h)
-add_executable(main key.cpp key.h router.cpp router.h session.cpp session.h main.cpp)
+add_executable(main key.cpp key.h router.cpp router.h rpc.cpp session.cpp session.h main.cpp)
 
 target_link_libraries(main
   dht_grpc_proto
