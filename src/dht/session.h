@@ -33,7 +33,7 @@ private:
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
   bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** data_buffer);
-  void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn);
+  void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn);
 
   // RPC handlers
   void init_server(std::string server_address);

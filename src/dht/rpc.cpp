@@ -71,6 +71,7 @@ void Session::cleanup_chunks_thread_fn() {
 void Session::refresh_peer_thread_fn() {
   std::chrono::seconds sleep_time(10);
   std::chrono::seconds unaccessed_time(3600);
+  std::deque<Peer> buffer;
   while (true) {
     std::this_thread::sleep_for(sleep_time);
     if (this->dying) {
@@ -78,8 +79,10 @@ void Session::refresh_peer_thread_fn() {
     }
     std::deque<Peer*> refresh_peers;
     this->router->random_per_bucket_peers(refresh_peers, unaccessed_time);
+    std::deque<Peer> buffer;
     for (Peer* peer : refresh_peers) {
-      this->node_lookup(peer->key);
+      this->node_lookup(peer->key, buffer);
+      buffer.clear();
     }
   }
 

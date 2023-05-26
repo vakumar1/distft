@@ -69,7 +69,7 @@ void Session::set(Key search_key, std::byte* data, size_t size) {
   Chunk* chunk = new Chunk(data, size);
   Dist max_dist;
   max_dist.value.reset();
-  for (int i = 0; i < PEER_LOOKUP_ALPHA && i < buffer.size()) {
+  for (int i = 0; i < PEER_LOOKUP_ALPHA && i < buffer.size(); i++) {
     Peer other_peer = buffer.at(i);
     this->store(&other_peer, chunk->key, chunk->data, chunk->size);
     max_dist = std::max(max_dist, Dist(chunk->key, other_peer.key));

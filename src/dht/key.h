@@ -14,6 +14,10 @@
 
 typedef std::bitset<KEYBITS> Key;
 
+// generate a random 160-bit key
+Key random_key();
+
+// represents a distance between two keys
 struct Dist {
   Dist() {
     value = std::bitset<KEYBITS>().set();
@@ -26,24 +30,12 @@ struct Dist {
   const bool operator >= (const Dist& d) const;
 };
 
-struct StaticDistComparator {
-  StaticDistComparator(Key k) {
-    this->key = k;
-  }
-  bool operator()(Key k1, Key k2) {
-    return Dist(key, k1) < Dist(key, k2);
-  }
-  Key key;
-};
-
-// generate a random 160-bit key
-Key random_key();
-
 
 //
 // Peers and Chunks
 //
 
+// stores peer-specific information
 struct Peer {
   Peer() {
     this->key = Key().reset();
@@ -54,6 +46,17 @@ struct Peer {
     this->endpoint = endpoint;
   }
   std::string endpoint;
+  Key key;
+};
+
+// compares two peers with respect to a static key
+struct StaticDistComparator {
+  StaticDistComparator(Key k) {
+    this->key = k;
+  }
+  bool operator()(Peer& p1, Peer& p2) {
+    return Dist(key, p1.key) < Dist(key, p2.key);
+  }
   Key key;
 };
 
