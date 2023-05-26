@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <openssl/sha.h>
+#include <chrono>
 
 #define CHUNK_DIR "~/.distft"
 #define FILEPATH_SIZE 20
@@ -23,7 +24,7 @@ private:
 public:
   // TODO: store data in filesystem
 
-  Chunk(std::byte* data, size_t size) {
+  Chunk(std::byte* data, size_t size, bool original_publisher, std::chrono::time_point<std::chrono::steady_clock> expiry_time) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(reinterpret_cast<const unsigned char*>(data), size, hash);
     this->key = Key();
@@ -39,6 +40,9 @@ public:
     }
     this->size = size;
     this->data = data;
+    this->original_publisher = original_publisher;
+    this->last_published = std::chrono::steady_clock::now();
+    this->expiry_time = expiry_time;
   }
 
   ~Chunk() {
@@ -76,7 +80,10 @@ public:
   //   file.close();
   //   return true;
   // }
+  bool original_publisher;
   Key key;
   std::byte* data;
   size_t size;
+  std::chrono::time_point<std::chrono::steady_clock> last_published;
+  std::chrono::time_point<std::chrono::steady_clock> expiry_time;
 };

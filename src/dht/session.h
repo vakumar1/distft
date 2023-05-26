@@ -30,6 +30,7 @@ private:
   std::deque<std::thread*> rpc_threads;
   
   // node lookup algorithms
+  void publish(Chunk* chunk);
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
   bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** data_buffer);
@@ -63,7 +64,7 @@ private:
   void refresh_peer_thread_fn();
   void find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
   bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, std::byte** data_buffer);
-  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size);
+  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
   // helpers
@@ -85,7 +86,7 @@ public:
   ~Session();
 
   // add chunk data to DHT
-  void set(Key search_key, std::byte* data, size_t size);
+  Key set(std::byte* data, size_t size);
 
   // get value from DHT
   // returns false if key was not found

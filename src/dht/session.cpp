@@ -7,6 +7,7 @@
 #include <iostream>
 
 #define MAX_LOOKUP_ITERS KEYBITS
+#define CHUNK_EXPIRE_TIME 86400
 
 //
 // SESSION API
@@ -42,7 +43,7 @@ Session::~Session() {
     std::deque<Peer*> closest_peers;
     this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
     for (Peer* other_peer : closest_peers) {
-      this->store(other_peer, chunk_key, chunk->data, chunk->size);
+      this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
     }
   }
 
@@ -61,17 +62,28 @@ Session::~Session() {
 
 }
 
-void Session::set(Key search_key, std::byte* data, size_t size) {
+// publish a new chunk of data to the DHT
+Key Session::set(std::byte* data, size_t size) {
+  Chunk* chunk = new Chunk(data, size, true, std::chrono::steady_clock::now() + std::chrono::seconds(CHUNK_EXPIRE_TIME));
+  Key chunk_key = chunk->key;
+  this->publish(chunk);
+  return chunk_key;
+}
+
+// publish a (new or old) chunk to the DHT
+// the chunk (and its data) may be deleted if it does not
+// need to be stored locally
+void Session::publish(Chunk* chunk) {
+  Key chunk_key = chunk->key;
   std::deque<Peer> buffer;
-  this->node_lookup(search_key, buffer);
+  this->node_lookup(chunk_key, buffer);
 
   // select the ALPHA closest keys to store the chunk
-  Chunk* chunk = new Chunk(data, size);
   Dist max_dist;
   max_dist.value.reset();
   for (int i = 0; i < PEER_LOOKUP_ALPHA && i < buffer.size(); i++) {
     Peer other_peer = buffer.at(i);
-    this->store(&other_peer, chunk->key, chunk->data, chunk->size);
+    this->store(&other_peer, chunk->key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
     max_dist = std::max(max_dist, Dist(chunk->key, other_peer.key));
   }
 

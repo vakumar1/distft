@@ -51,6 +51,7 @@ message StoreRequest {
   Peer sender = 1;
   bytes chunk_key = 2;
   bytes data = 3;
+  int64 time_to_expire = 4;
 }
 
 message StoreResponse {

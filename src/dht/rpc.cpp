@@ -45,25 +45,40 @@ void Session::shutdown_rpc_threads() {
   }
 }
 
-// TODO: republish chunks that haven't been republished in a while by anyone
+// republish chunks that haven't been republished in a while by anyone
 void Session::republish_chunks_thread_fn() {
-  // std::chrono::seconds sleep(3600);
-  // while (true) {
-  //   std::this_thread::sleep_for(sleep);
-  //   for (const auto& pair : this->chunks) {
-  //     Key chunk_key = pair.first;
-  //     Chunk* chunk = pair.second;
-  //     std::deque<Peer*> closest_peers;
-  //     this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
-  //     for (Peer* peer : closest_peers) {
-  //       this->republish(peer, chunk_key, chunk->data);
-  //     }
-  //   }
-  // }
+  std::chrono::seconds sleep_time(10);
+  std::chrono::seconds unpublished_time(3600);
+  while (true) {
+    std::this_thread::sleep_for(sleep_time);
+    for (const auto& pair : this->chunks) {
+      Key chunk_key = pair.first;
+      Chunk* chunk = pair.second;
+      std::chrono::seconds time_since_publish = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - chunk->last_published);
+      if (chunk->original_publisher && time_since_publish >= unpublished_time) {
+        // remove chunk from local map and republish
+        this->chunks.erase(chunk_key);
+        this->publish(chunk);
+      }
+    }
+  }
 }
 
-// TODO: store expiry time in chunks and remove expired chunks
+// remove expired chunks
 void Session::cleanup_chunks_thread_fn() {
+  std::chrono::seconds sleep_time(10);
+  while (true) {
+    std::this_thread::sleep_for(sleep_time);
+    for (const auto& pair : this->chunks) {
+      Key chunk_key = pair.first;
+      Chunk* chunk = pair.second;
+      if (chunk->expiry_time >= std::chrono::steady_clock::now()) {
+        // remove chunk from local map and delete
+        this->chunks.erase(chunk_key);
+        delete chunk;
+      }
+    }
+  }
 }
 
 // store time since last lookup for each peer and perform random lookup on a peer
@@ -122,12 +137,9 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
                         dht::FindValueResponse* response) {
 
   // update sender and set receiver
-  dht::Peer rpc_sender = request->sender();
-  Peer sender;
-  rpc_peer_to_local(&rpc_sender, &sender);
-  this->update_peer(sender.key, sender.endpoint);
+  dht::Peer sender = request->sender();
   dht::Peer receiver;
-  local_to_rpc_peer(this->router->get_self_peer(), &receiver);
+  this->rpc_handler_prelims(&sender, &receiver);
   response->set_allocated_receiver(&receiver);
 
   Key search_key = Key(request->search_key());
@@ -158,9 +170,10 @@ grpc::Status Session::StoreInit(grpc::ServerContext* context,
                         const dht::StoreInitRequest* request,
                         dht::StoreInitResponse* response) {
 
-  // set receiver
+  // update sender and set receiver
+  dht::Peer sender = request->sender();
   dht::Peer receiver;
-  local_to_rpc_peer(this->router->get_self_peer(), &receiver);
+  this->rpc_handler_prelims(&sender, &receiver);
   response->set_allocated_receiver(&receiver);
 
   // continue store if data not stored locally
@@ -174,16 +187,19 @@ grpc::Status Session::StoreInit(grpc::ServerContext* context,
 grpc::Status Session::Store(grpc::ServerContext* context, 
                         const dht::StoreRequest* request,
                         dht::StoreResponse* response) {
-  // set receiver
+  // update sender and set receiver
+  dht::Peer sender = request->sender();
   dht::Peer receiver;
-  local_to_rpc_peer(this->router->get_self_peer(), &receiver);
+  this->rpc_handler_prelims(&sender, &receiver);
   response->set_allocated_receiver(&receiver);
 
   // store chunk locally
   size_t size = request->data().size();
   std::byte* data = new std::byte[size];
   std::memcpy(data, request->data().data(), size);
-  Chunk* chunk = new Chunk(data, size);
+  long time_to_expire = request->time_to_expire();
+
+  Chunk* chunk = new Chunk(data, size, false, std::chrono::steady_clock::now() + std::chrono::seconds(time_to_expire));
   this->chunks[chunk->key] = chunk;
   return grpc::Status::OK;
 }
@@ -192,9 +208,10 @@ grpc::Status Session::Store(grpc::ServerContext* context,
 grpc::Status Session::Ping(grpc::ServerContext* context, 
                         const dht::PingRequest* request,
                         dht::PingResponse* response) {
-  // set receiver
+  // update sender and set receiver
+  dht::Peer sender = request->sender();
   dht::Peer receiver;
-  local_to_rpc_peer(this->router->get_self_peer(), &receiver);
+  this->rpc_handler_prelims(&sender, &receiver);
   response->set_allocated_receiver(&receiver);
 
   return grpc::Status::OK;
@@ -274,7 +291,7 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   return false;
 }
 
-void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size) {
+void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire) {
   // part i: initial storage request
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::StoreInitRequest init_request;
@@ -306,6 +323,7 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   request.set_chunk_key(chunk_key.to_string());
   const char* data = reinterpret_cast<const char*>(data_buffer);
   request.mutable_data()->assign(data, data + size);
+  request.set_time_to_expire(time_to_expire.count());
 
   status = stub->Store(&context, request, &response);
   if (!status.ok()) {
