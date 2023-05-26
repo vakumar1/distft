@@ -4,8 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-
-#define CHUNK_BYTES 1024
+#include <openssl/sha.h>
 
 #define CHUNK_DIR "~/.distft"
 #define FILEPATH_SIZE 20
@@ -24,18 +23,24 @@ private:
 public:
   // TODO: store data in filesystem
 
-  // Chunk(Key key) {
-  //   this->key = key;
-  //   this->data = NULL;
-  // };
-  Chunk(std::byte* data) {
-    this->key = random_key();
+  Chunk(std::byte* data, size_t size) {
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(reinterpret_cast<const unsigned char*>(data), size, hash);
+    this->key = Key();
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+      unsigned char byte = hash[i];
+      for (int j = 0; j < 8; j++) {
+        if (byte >> j & 0x1) {
+          this->key.set(8 * i + j);
+        } else {
+          this->key.reset(8 * i + j);
+        }
+      }
+    }
+    this->size = size;
     this->data = data;
   }
-  Chunk(Key key, std::byte* data) {
-    this->key = key;
-    this->data = data;
-  }
+
   ~Chunk() {
     if (this->data != NULL) {
       delete this->data;
@@ -73,4 +78,5 @@ public:
   // }
   Key key;
   std::byte* data;
+  size_t size;
 };

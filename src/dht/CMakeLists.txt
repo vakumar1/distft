@@ -37,25 +37,12 @@ target_link_libraries(dht_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-# Link library header files
-# foreach(_target key router session)
-#   add_library(${_target} "${_target}.cpp")
-#   target_link_libraries(${_target}
-#     dht_grpc_proto
-#     absl::flags
-#     absl::flags_parse
-#     ${_REFLECTION}
-#     ${_GRPC_GRPCPP}
-#     ${_PROTOBUF_LIBPROTOBUF})
-# endforeach()
-
 # Compile main program
-# add_executable(${_target} "${_target}.cpp")
-set (SOURCES key.cpp router.cpp session.cpp)
+set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
+set (MAIN_SOURCE main.cpp)
 set (HEADERS key.h router.h session.h)
-add_executable(main key.cpp key.h router.cpp router.h rpc.cpp session.cpp session.h main.cpp)
-
-target_link_libraries(main
+add_executable(dht_server ${SOURCES} ${MAIN_SOURCE} ${HEADERS})
+target_link_libraries(dht_server
   dht_grpc_proto
   absl::flags
   absl::flags_parse
@@ -63,11 +50,39 @@ target_link_libraries(main
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-add_executable(client key.cpp key.h test_client.cpp)
-target_link_libraries(client
+add_executable(dht_client key.cpp key.h test_client.cpp)
+target_link_libraries(dht_client
   dht_grpc_proto
   absl::flags
   absl::flags_parse
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
+
+# Compile library for testing
+add_library(dht_lib ${SOURCES} ${HEADERS})
+target_link_libraries(dht_lib
+  dht_grpc_proto
+  absl::flags
+  absl::flags_parse
+  ${_REFLECTION}
+  ${_GRPC_GRPCPP}
+  ${_PROTOBUF_LIBPROTOBUF})
+
+# Tests
+include(CTest)
+enable_testing()
+add_subdirectory(tests tests/build)
+
+# set (TEST_SOURCES tests/test_router.cpp tests/main.cpp)
+# set (TEST_HEADERS tests/test_dht.h)
+# add_executable(test_main ${SOURCES} ${HEADERS} ${TEST_SOURCES} ${TEST_HEADERS})
+# target_link_libraries(test_main
+#   dht_grpc_proto
+#   absl::flags
+#   absl::flags_parse
+#   ${_REFLECTION}
+#   ${_GRPC_GRPCPP}
+#   ${_PROTOBUF_LIBPROTOBUF})
+
+# add_test(NAME TestRouter COMMAND test_main)

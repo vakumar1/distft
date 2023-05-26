@@ -13,6 +13,7 @@
 //
 
 typedef std::bitset<KEYBITS> Key;
+
 struct Dist {
   Dist() {
     value = std::bitset<KEYBITS>().set();
@@ -34,6 +35,10 @@ Key random_key();
 //
 
 struct Peer {
+  Peer() {
+    this->key = Key().reset();
+    this->endpoint = "0.0.0.0:80";
+  }
   Peer(Key key, std::string endpoint) {
     this->key = key;
     this->endpoint = endpoint;

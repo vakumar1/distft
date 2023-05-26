@@ -15,15 +15,16 @@
 Session::Session(std::string self_endpoint, std::string init_endpoint) {
   this->dying = false;
 
-  // generate self's key and 
-  // TODO: get key from initial peer
-  Key self_key = random_key();
-  Key init_key = random_key();
-  this->router = new Router(self_key, self_endpoint, init_key, init_endpoint);
-
-  // TODO: start server threads running in background: 
-  // RPC handler, ping RPC, republish RPC, stale chunks RPC, stale peers RPC
+  // start server RPC threads running in background
   this->init_server(self_endpoint);
+  this->init_rpc_threads();
+
+  // generate self's key and get the initial peer's key
+  Key self_key = random_key();
+  Peer other_peer = {random_key(), init_endpoint};
+
+  while (!this->ping(&other_peer, &other_peer));
+  this->router = new Router(self_key, self_endpoint, other_peer.key, other_peer.endpoint);
 
   // perform a node lookup on self
   this->self_lookup(self_key);
@@ -34,17 +35,21 @@ Session::~Session() {
   // set dying to true to invalidate all peer/chunk data for RPCs
   this->dying = true;
 
-  // re-assign all chunks to other peers
+  // re-assign all chunks to other peers by republishing
   for (auto& pair : this->chunks) {
-    Key key = pair.first;
-    Chunk chunk = *pair.second;
-    // TODO: send republish RPC to peer
+    Key chunk_key = pair.first;
+    Chunk* chunk = pair.second;
+    std::deque<Peer*> closest_peers;
+    this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
+    for (Peer* other_peer : closest_peers) {
+      this->store(other_peer, chunk_key, chunk->data, chunk->size);
+    }
   }
 
-  // TODO: stop all RPC threads
+  // stop all RPC threads
   this->shutdown_server();
+  this->shutdown_rpc_threads();
 
-  
   // memory cleanup: destroy all chunks and router
   for (auto& pair : this->chunks) {
     Key key = pair.first;
@@ -56,26 +61,35 @@ Session::~Session() {
 
 }
 
-void Session::set(Key search_key, const std::byte* data) {
+void Session::set(Key search_key, std::byte* data, size_t size) {
   this->node_lookup(search_key);
 
   // select the ALPHA closest keys to store the chunk
   std::deque<Peer*> closest_peers;
   this->router->closest_peers(search_key, PEER_LOOKUP_ALPHA, closest_peers);
+  Chunk* chunk = new Chunk(data, size);
+  Dist max_dist;
+  max_dist.value.reset();
   for (Peer* other_peer : closest_peers) {
-    // TODO: send async store RPC to closest peers
-
+    this->store(other_peer, chunk->key, chunk->data, chunk->size);
+    max_dist = std::max(max_dist, Dist(chunk->key, other_peer->key));
   }
 
-  // TODO: figure out whether key should also be set locally
+  // figure out whether key should also be set locally
+  if (max_dist >= Dist(chunk->key, this->router->get_self_peer()->key)) {
+    this->chunks[chunk->key] = chunk;
+  } else {
+    delete chunk;
+  }
 }
 
-bool Session::get(Key search_key, std::byte** data_buffer) {
+bool Session::get(Key search_key, std::byte** data_buffer, size_t* size_buffer) {
   // check if the key is cached locally
   if (this->chunks.count(search_key) > 0) {
     Chunk* found_chunk = this->chunks[search_key];
-    *data_buffer = new std::byte[CHUNK_BYTES];
-    std::memcpy(*data_buffer, found_chunk->data, CHUNK_BYTES);
+    *data_buffer = new std::byte[found_chunk->size];
+    std::memcpy(*data_buffer, found_chunk->data, found_chunk->size);
+    *size_buffer = found_chunk->size;
     return true;
   }
   return this->value_lookup(search_key, data_buffer);
@@ -110,13 +124,13 @@ void Session::self_lookup(Key self_key) {
         continue;
       }
 
-      // TODO: send async find node RPC to get K closest keys the peer knows of
+      // send async find node RPC to get K closest keys the peer knows of
       // to refresh the Router
-
+      this->find_node(other_peer, self_key);
       queried.insert(other_peer->key);
     }
 
-    // send refresh requests to all peers except its closest key (to add self to their routers)
+    // send pings to all peers except its closest key (to add self to their routers)
     std::deque<Peer*> peers;
     this->router->all_peers(peers);
     this->router->closest_peers(self_key, 1, closest_peers);
@@ -125,7 +139,8 @@ void Session::self_lookup(Key self_key) {
       if (other_peer->key == closest_key) {
         continue;
       }
-      // TODO: send refresh RPC to peer
+      Peer actual_peer;
+      this->ping(other_peer, &actual_peer);
     }
   }
 }
@@ -154,9 +169,9 @@ void Session::node_lookup(Key node_key) {
         continue;
       }
 
-      // TODO: send async find node RPC to get K closest keys the peer knows of
+      // send async find node RPC to get K closest keys the peer knows of
       // to refresh the Router
-
+      this->find_node(other_peer, node_key);
       queried.insert(other_peer->key);
     }
   }
@@ -165,8 +180,9 @@ void Session::node_lookup(Key node_key) {
   this->router->closest_peers(node_key, KBUCKET_MAX, closest_peers);
   for (Peer* other_peer : closest_peers) {
     
-    // TODO: send synchronous find node RPC to get K closest keys the peer knows of
+    // send synchronous find node RPC to get K closest keys the peer knows of
     // to refresh the Router
+    this->find_node(other_peer, node_key);
 
   }
 }
@@ -195,10 +211,12 @@ bool Session::value_lookup(Key chunk_key, std::byte** data_buffer) {
         continue;
       }
 
-      // TODO: send async find value RPC to get K closest keys the peer knows of
+      // send async find value RPC to get K closest keys the peer knows of
       // to refresh the Router
       // immediately return if the peer returns a value
-      return true;
+      if(this->find_value(other_peer, chunk_key, data_buffer)) {
+        return true;
+      }
 
       queried.insert(other_peer->key);
     }

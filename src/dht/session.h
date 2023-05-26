@@ -44,18 +44,15 @@ private:
   grpc::Status FindValue(grpc::ServerContext* context, 
                           const dht::FindValueRequest* request,
                           dht::FindValueResponse* response) override;
+  grpc::Status StoreInit(grpc::ServerContext* context, 
+                          const dht::StoreInitRequest* request,
+                          dht::StoreInitResponse* response) override;
   grpc::Status Store(grpc::ServerContext* context, 
                           const dht::StoreRequest* request,
                           dht::StoreResponse* response) override;
   grpc::Status Ping(grpc::ServerContext* context, 
                           const dht::PingRequest* request,
                           dht::PingResponse* response) override;
-  grpc::Status RepublishInit(grpc::ServerContext* context, 
-                          const dht::RepublishInitRequest* request,
-                          dht::RepublishInitResponse* response) override;
-  grpc::Status RepublishData(grpc::ServerContext* context, 
-                          const dht::RepublishDataRequest* request,
-                          dht::RepublishDataResponse* response) override;
   
   // RPC caller threads: republish + expired chunks, refresh nodes
   void init_rpc_threads();
@@ -63,11 +60,21 @@ private:
   void republish_chunks_thread_fn();
   void cleanup_chunks_thread_fn();
   void refresh_peer_thread_fn();
-  void find_node(Peer* peer, Key& search_key, std::deque<Key> buffer);
-  bool find_value(Peer* peer, Key& search_key, std::byte** data_buffer, std::deque<Key> buffer);
-  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer);
-  void ping(Peer* peer);
-  void republish(Peer* peer, Key& chunk_key, std::byte* data_buffer);
+  void find_node(Peer* peer, Key& search_key);
+  bool find_value(Peer* peer, Key& search_key, std::byte** data_buffer);
+  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size);
+  bool ping(Peer* peer, Peer* receiver_peer_buffer);
+
+  // helpers
+  std::unique_ptr<dht::DHTService::Stub> rpc_stub(Peer* peer);
+  void rpc_handler_prelims(dht::Peer* sender, dht::Peer* receiver_buffer);
+  void rpc_caller_prelims(dht::Peer* sender);
+  void rpc_caller_epilogue(dht::Peer* receiver_buffer);
+  void update_peer(Key& peer_key, std::string endpoint);
+  void store_discovered_peer(Key& peer_key, std::string endpoint);
+  void local_to_rpc_peer(Peer* peer, dht::Peer* rpc_peer_buffer);
+  void rpc_peer_to_local(dht::Peer* rpc_peer, Peer* peer_buffer);
+
 
 public:
   // constructor: set up session and initialize routing table with initial peer
@@ -77,9 +84,9 @@ public:
   ~Session();
 
   // add chunk data to DHT
-  void set(Key search_key, const std::byte* data);
+  void set(Key search_key, std::byte* data, size_t size);
 
   // get value from DHT
   // returns false if key was not found
-  bool get(Key search_key, std::byte** data_buffer);
+  bool get(Key search_key, std::byte** data_buffer, size_t* size_buffer);
 };

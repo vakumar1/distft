@@ -5,65 +5,63 @@ package dht;
 service DHTService {
   rpc FindNode(FindNodeRequest) returns (FindNodeResponse);
   rpc FindValue(FindValueRequest) returns (FindValueResponse);
+  rpc StoreInit(StoreInitRequest) returns (StoreInitResponse);
   rpc Store(StoreRequest) returns (StoreResponse);
   rpc Ping(PingRequest) returns (PingResponse);
-  rpc RepublishInit(RepublishInitRequest) returns (RepublishInitResponse);
-  rpc RepublishData(RepublishDataRequest) returns (RepublishDataResponse);
-}
-
-message FindNodeRequest {
-  bytes search_key = 1; 
-}
-
-message FindNodeResponse {
-  repeated Peer closest_peers = 1;
-}
-
-message FindValueRequest {
-  bytes search_key = 1;
-}
-
-message FindValueResponse {
-  bool found_value = 1;
-  bytes data = 2;
-  repeated Peer closest_peers = 3;
-}
-
-message StoreRequest {
-  bytes chunk_key = 1;
-  bytes data = 2;
-}
-
-message StoreResponse {
-  bool store_success = 1;
-}
-
-message PingRequest {
-  bytes send_key = 1;
-}
-
-message PingResponse {
-  bytes recv_key = 1;
-}
-
-message RepublishInitRequest {
-  bytes chunk_key = 1;
-}
-
-message RepublishInitResponse {
-  bool continue_republish = 1;
-}
-
-message RepublishDataRequest {
-  bytes chunk_key = 1;
-  bytes data = 2;
-}
-
-message RepublishDataResponse {
-  bool republish_success = 1;
 }
 
 message Peer {
   bytes key = 1;
   string endpoint = 2;
 }
+
+message FindNodeRequest {
+  Peer sender = 1;
+  bytes search_key = 2;
+}
+
+message FindNodeResponse {
+  Peer receiver = 1;
+  repeated Peer closest_peers = 2;
+}
+
+message FindValueRequest {
+  Peer sender = 1;
+  bytes search_key = 2;
+}
+
+message FindValueResponse {
+  Peer receiver = 1;
+  bool found_value = 2;
+  bytes data = 3;
+  repeated Peer closest_peers = 4;
+}
+
+message StoreInitRequest {
+  Peer sender = 1;
+  bytes chunk_key = 2;
+}
+
+message StoreInitResponse {
+  Peer receiver = 1;
+  bool continue_store = 2;
+}
+
+message StoreRequest {
+  Peer sender = 1;
+  bytes chunk_key = 2;
+  bytes data = 3;
+}
+
+message StoreResponse {
+  Peer receiver = 1;
+}
+
+message PingRequest {
+  Peer sender = 1;
+}
+
+message PingResponse {
+  Peer receiver = 1;
+}
+

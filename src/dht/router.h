@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <unordered_map>
+#include <chrono>
 
 #define KBUCKET_MAX 5
 
@@ -24,51 +25,43 @@ private:
     BinaryTree(int split_bit_index, BinaryTree* parent);
     ~BinaryTree();
 
-    // split Binary Tree leaf in half and reassign keys into correct sub-tree
-    void split();
-
-    // get the (potentially less than) n closest keys to the key
-    void tree_closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
-
-    // get all peers in the tree
-    void tree_all_peers(std::deque<Peer*>& buffer);
-
     bool leaf;
     unsigned int split_bit_index;
     unsigned int key_count;
+    std::chrono::time_point<std::chrono::steady_clock> latest_access;
     BinaryTree* parent;
     BinaryTree* zero_tree;
     BinaryTree* one_tree;
     std::deque<Peer*> kbucket;
+
+    void split();
+    void tree_closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer);
+    void tree_all_peers(std::deque<Peer*>& buffer);
+    void random_per_bucket_peers_helper(std::deque<Peer*>& peer_buffer, std::chrono::seconds unaccessed_time);
     
   };
 
   Peer* self_peer;
   BinaryTree* table;
 
+
   
 public:
   Router(Key& self_key, std::string& self_endpoint, Key& other_key, std::string& other_endpoint);
   ~Router();
 
-  // attempt to add key into correct kbucket in table
-  // the insertion may fail if the designated kbucket is full
-  void insert_peer(Key& peer_key, std::string endpoint);
+  // mutating router state
+  bool attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru_peer_buffer);
+  void evict_peer(Key& evict_key);
+  void update_seen_peer(Key& peer_key);
 
-  void refresh_peer(Key& peer_key);
-
-  // remove the key from the table
-  void remove_peer(Key& peer_key);
-
-  // return vector of (potentially less than) n closest peers to the given keys
-  void closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
-
-  // return all keys in the router
-  void all_peers(std::deque<Peer*>& buffer);
-
+  // accessing peers
   Peer* get_peer(Key& key);
-
   Peer* get_self_peer();
+  void closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
+  void all_peers(std::deque<Peer*>& buffer);
+  void random_per_bucket_peers(std::deque<Peer*>& peer_buffer, std::chrono::seconds unaccessed_time);
+
 
 };
 

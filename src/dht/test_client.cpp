@@ -11,7 +11,11 @@ int main() {
   std::unique_ptr<dht::DHTService::Stub> stub = dht::DHTService::NewStub(channel);
 
   dht::PingRequest req;
-  req.set_send_key(Key().set().to_string());
+  dht::Peer sender_rpc;
+  Peer sender;
+  sender_rpc.set_key(sender.key.to_string());
+  sender_rpc.set_endpoint(sender.endpoint);
+  req.set_allocated_sender(&sender_rpc);
 
   dht::PingResponse res;
   grpc::ClientContext context;
@@ -22,7 +26,7 @@ int main() {
   // Check if the RPC call was successful
   if (status.ok()) {
     // Process the response from the server
-    std::cout << "Response: " << res.recv_key() << std::endl;
+    std::cout << "Response: " << res.receiver().key() << std::endl;
   } else {
     // Handle the error case
     std::cout << "RPC failed with error code: " << status.error_code() << std::endl;
