@@ -31,8 +31,9 @@ private:
   
   // node lookup algorithms
   void self_lookup(Key self_key);
-  void node_lookup(Key node_key);
-  bool value_lookup(Key chunk_key, std::byte** data_buffer);
+  void node_lookup(Key node_key, std::deque<Peer>& buffer);
+  bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** data_buffer);
+  void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn);
 
   // RPC handlers
   void init_server(std::string server_address);
@@ -60,8 +61,8 @@ private:
   void republish_chunks_thread_fn();
   void cleanup_chunks_thread_fn();
   void refresh_peer_thread_fn();
-  void find_node(Peer* peer, Key& search_key);
-  bool find_value(Peer* peer, Key& search_key, std::byte** data_buffer);
+  void find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
+  bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, std::byte** data_buffer);
   void store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 

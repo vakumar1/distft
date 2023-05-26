@@ -202,7 +202,7 @@ grpc::Status Session::Ping(grpc::ServerContext* context,
 //
 
 
-void Session::find_node(Peer* peer, Key& search_key) {
+void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::FindNodeRequest request;
   grpc::ClientContext context;
@@ -223,14 +223,16 @@ void Session::find_node(Peer* peer, Key& search_key) {
   dht::Peer receiver_rpc = response.receiver();
   this->rpc_caller_epilogue(&receiver_rpc);
 
-  // store closest keys
+  // store closest keys and add to buffer
   for (dht::Peer peer : response.closest_peers()) {
-    Key peer_key = Key(peer.key());
-    this->store_discovered_peer(peer_key, peer.endpoint());
+    Peer local_peer;
+    this->rpc_peer_to_local(&peer, &local_peer);
+    this->store_discovered_peer(local_peer.key, local_peer.endpoint);
+    buffer.push_back(local_peer);
    }
 }
 
-bool Session::find_value(Peer* peer, Key& search_key, std::byte** data_buffer) {
+bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, std::byte** data_buffer) {
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::FindValueRequest request;
   grpc::ClientContext context;
@@ -259,11 +261,13 @@ bool Session::find_value(Peer* peer, Key& search_key, std::byte** data_buffer) {
     return true;
   }
 
-  // store closest keys
+  // store closest keys and add to buffer
   for (dht::Peer peer : response.closest_peers()) {
-    Key peer_key = Key(peer.key());
-    this->store_discovered_peer(peer_key, peer.endpoint());
-  }
+    Peer local_peer;
+    this->rpc_peer_to_local(&peer, &local_peer);
+    this->store_discovered_peer(local_peer.key, local_peer.endpoint);
+    buffer.push_back(local_peer);
+   }
   return false;
 }
 
