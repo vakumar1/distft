@@ -51,6 +51,9 @@ void Session::republish_chunks_thread_fn() {
   std::chrono::seconds unpublished_time(3600);
   while (true) {
     std::this_thread::sleep_for(sleep_time);
+    if (this->dying) {
+      return;
+    }
     for (const auto& pair : this->chunks) {
       Key chunk_key = pair.first;
       Chunk* chunk = pair.second;
@@ -69,6 +72,9 @@ void Session::cleanup_chunks_thread_fn() {
   std::chrono::seconds sleep_time(10);
   while (true) {
     std::this_thread::sleep_for(sleep_time);
+    if (this->dying) {
+      return;
+    }
     for (const auto& pair : this->chunks) {
       Key chunk_key = pair.first;
       Chunk* chunk = pair.second;
@@ -115,9 +121,9 @@ grpc::Status Session::FindNode(grpc::ServerContext* context,
   
   // update sender and set receiver
   dht::Peer sender = request->sender();
-  dht::Peer receiver;
-  this->rpc_handler_prelims(&sender, &receiver);
-  response->set_allocated_receiver(&receiver);
+  dht::Peer* receiver = new dht::Peer;
+  this->rpc_handler_prelims(&sender, receiver);
+  response->set_allocated_receiver(receiver);
 
   // set closest keys
   Key search_key = Key(request->search_key());
@@ -138,9 +144,9 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
 
   // update sender and set receiver
   dht::Peer sender = request->sender();
-  dht::Peer receiver;
-  this->rpc_handler_prelims(&sender, &receiver);
-  response->set_allocated_receiver(&receiver);
+  dht::Peer* receiver = new dht::Peer;
+  this->rpc_handler_prelims(&sender, receiver);
+  response->set_allocated_receiver(receiver);
 
   Key search_key = Key(request->search_key());
   // found key -> send data
@@ -172,9 +178,9 @@ grpc::Status Session::StoreInit(grpc::ServerContext* context,
 
   // update sender and set receiver
   dht::Peer sender = request->sender();
-  dht::Peer receiver;
-  this->rpc_handler_prelims(&sender, &receiver);
-  response->set_allocated_receiver(&receiver);
+  dht::Peer* receiver = new dht::Peer;
+  this->rpc_handler_prelims(&sender, receiver);
+  response->set_allocated_receiver(receiver);
 
   // continue store if data not stored locally
   Key chunk_key = Key(request->chunk_key());
@@ -189,9 +195,9 @@ grpc::Status Session::Store(grpc::ServerContext* context,
                         dht::StoreResponse* response) {
   // update sender and set receiver
   dht::Peer sender = request->sender();
-  dht::Peer receiver;
-  this->rpc_handler_prelims(&sender, &receiver);
-  response->set_allocated_receiver(&receiver);
+  dht::Peer* receiver = new dht::Peer;
+  this->rpc_handler_prelims(&sender, receiver);
+  response->set_allocated_receiver(receiver);
 
   // store chunk locally
   size_t size = request->data().size();
@@ -210,9 +216,9 @@ grpc::Status Session::Ping(grpc::ServerContext* context,
                         dht::PingResponse* response) {
   // update sender and set receiver
   dht::Peer sender = request->sender();
-  dht::Peer receiver;
-  this->rpc_handler_prelims(&sender, &receiver);
-  response->set_allocated_receiver(&receiver);
+  dht::Peer* receiver = new dht::Peer;
+  this->rpc_handler_prelims(&sender, receiver);
+  response->set_allocated_receiver(receiver);
 
   return grpc::Status::OK;
 }
@@ -229,9 +235,9 @@ void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   dht::FindNodeResponse response;
 
   // add sender and search key to request
-  dht::Peer self_peer_rpc;
-  this->rpc_caller_prelims(&self_peer_rpc);
-  request.set_allocated_sender(&self_peer_rpc);
+  dht::Peer* self_peer_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_rpc);
+  request.set_allocated_sender(self_peer_rpc);
   request.set_search_key(search_key.to_string());
 
   grpc::Status status = stub->FindNode(&context, request, &response);
@@ -259,9 +265,9 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   dht::FindValueResponse response;
 
   // add sender and search key to request
-  dht::Peer self_peer_rpc;
-  this->rpc_caller_prelims(&self_peer_rpc);
-  request.set_allocated_sender(&self_peer_rpc);
+  dht::Peer* self_peer_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_rpc);
+  request.set_allocated_sender(self_peer_rpc);
   request.set_search_key(search_key.to_string());
 
   grpc::Status status = stub->FindValue(&context, request, &response);
@@ -299,9 +305,9 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   dht::StoreInitResponse init_response;
 
   // add sender and chunk key to request
-  dht::Peer self_peer_rpc;
-  this->rpc_caller_prelims(&self_peer_rpc);
-  init_request.set_allocated_sender(&self_peer_rpc);
+  dht::Peer* self_peer_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_rpc);
+  init_request.set_allocated_sender(self_peer_rpc);
   init_request.set_chunk_key(chunk_key.to_string());
 
   grpc::Status status = stub->StoreInit(&init_context, init_request, &init_response);
@@ -319,7 +325,7 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   dht::StoreResponse response;
 
   // add sender and chunk key + data to request
-  request.set_allocated_sender(&self_peer_rpc);
+  request.set_allocated_sender(self_peer_rpc);
   request.set_chunk_key(chunk_key.to_string());
   const char* data = reinterpret_cast<const char*>(data_buffer);
   request.mutable_data()->assign(data, data + size);
@@ -343,8 +349,9 @@ bool Session::ping(Peer* peer, Peer* receiver_peer_buffer) {
   dht::PingResponse response;
   
   // add sender to request
-  dht::Peer self_peer_rpc = request.sender();
-  this->rpc_caller_prelims(&self_peer_rpc);
+  dht::Peer* self_peer_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_rpc);
+  request.set_allocated_sender(self_peer_rpc);
 
   grpc::Status status = stub->Ping(&context, request, &response);
   if (!status.ok()) {
@@ -353,8 +360,7 @@ bool Session::ping(Peer* peer, Peer* receiver_peer_buffer) {
 
   // update receiver
   dht::Peer receiver_rpc = response.receiver();
-  rpc_peer_to_local(&receiver_rpc, receiver_peer_buffer);
-  this->update_peer(receiver_peer_buffer->key, receiver_peer_buffer->endpoint);
+  this->rpc_caller_epilogue(&receiver_rpc);
   return true;
 }
 
@@ -395,7 +401,8 @@ void Session::rpc_caller_epilogue(dht::Peer* receiver) {
 
 // convert local Peer to RPC peer
 void Session::local_to_rpc_peer(Peer* peer, dht::Peer* rpc_peer_buffer) {
-  rpc_peer_buffer->set_key(peer->key.to_string());
+  std::string key_str = peer->key.to_string();
+  rpc_peer_buffer->set_key(key_str);
   rpc_peer_buffer->set_endpoint(peer->endpoint);
 }
 

@@ -16,16 +16,19 @@
 Session::Session(std::string self_endpoint, std::string init_endpoint) {
   this->dying = false;
 
+  // generate self's key and get the initial peer's key (temporarily create router)
+  Key self_key = random_key();
+  Key temp_key = random_key();
+  Peer other_peer = {temp_key, init_endpoint};
+  this->router = new Router(self_key, self_endpoint, other_peer.key, other_peer.endpoint);
+
   // start server RPC threads running in background
   this->init_server(self_endpoint);
-  this->init_rpc_threads();
+  this->init_rpc_threads();  
 
-  // generate self's key and get the initial peer's key
-  Key self_key = random_key();
-  Peer other_peer = {random_key(), init_endpoint};
-
+  // ping peer for correct key (and remove dummy peer from router)
   while (!this->ping(&other_peer, &other_peer));
-  this->router = new Router(self_key, self_endpoint, other_peer.key, other_peer.endpoint);
+  this->router->evict_peer(temp_key);
 
   // perform a node lookup on self
   this->self_lookup(self_key);

@@ -38,6 +38,7 @@ target_link_libraries(dht_grpc_proto
   ${_PROTOBUF_LIBPROTOBUF})
 
 # Compile main program
+set (CMAKE_CXX_FLAGS "-g")
 set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
 set (MAIN_SOURCE main.cpp)
 set (HEADERS key.h router.h session.h)
