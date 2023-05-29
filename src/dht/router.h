@@ -3,6 +3,9 @@
 #include <deque>
 #include <unordered_map>
 #include <chrono>
+#include <mutex>
+#include <algorithm>
+#include <random>
 
 #define KBUCKET_MAX 5
 
@@ -19,7 +22,7 @@ private:
   // (i) joint: splits into 2 sub-trees each corresponding to adding bit 0 or 1 to the matching prefix
   // (ii) leaf: contains a kbucket (LRU-ish cache) with at most K keys that have a common 
   //      least signficant set bit of key ^ other
-  class BinaryTree {    
+  class BinaryTree {
 
   public:
     BinaryTree(int split_bit_index, BinaryTree* parent);

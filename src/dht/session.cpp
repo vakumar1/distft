@@ -1,11 +1,5 @@
 #include "session.h"
 
-#include <string>
-#include <deque>
-#include <unordered_set>
-#include <thread>
-#include <iostream>
-
 #define MAX_LOOKUP_ITERS KEYBITS
 #define CHUNK_EXPIRE_TIME 86400
 
@@ -18,9 +12,12 @@ Session::Session(std::string self_endpoint, std::string init_endpoint) {
 
   // generate self's key and get the initial peer's key (temporarily create router)
   Key self_key = random_key();
+  spdlog::debug("CREATING SESSION {}", hex_string(self_key));
   Key temp_key = random_key();
   Peer other_peer = {temp_key, init_endpoint};
+  this->lock.lock();
   this->router = new Router(self_key, self_endpoint, other_peer.key, other_peer.endpoint);
+  this->lock.unlock();
 
   // start server RPC threads running in background
   this->init_server(self_endpoint);
@@ -28,7 +25,9 @@ Session::Session(std::string self_endpoint, std::string init_endpoint) {
 
   // ping peer for correct key (and remove dummy peer from router)
   while (!this->ping(&other_peer, &other_peer));
+  this->lock.lock();
   this->router->evict_peer(temp_key);
+  this->lock.unlock();
 
   // perform a node lookup on self
   this->self_lookup(self_key);
@@ -44,7 +43,9 @@ Session::~Session() {
     Key chunk_key = pair.first;
     Chunk* chunk = pair.second;
     std::deque<Peer*> closest_peers;
+    this->lock.lock();
     this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
+    this->lock.unlock();
     for (Peer* other_peer : closest_peers) {
       this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
     }
@@ -127,7 +128,9 @@ void Session::self_lookup(Key self_key) {
 
   // send pings to all peers
   std::deque<Peer*> peers;
+  this->lock.lock();
   this->router->all_peers(peers);
+  this->lock.unlock();
   for (Peer* other_peer : peers) {
     Peer actual_peer;
     this->ping(other_peer, &actual_peer);
@@ -176,7 +179,9 @@ bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** 
 void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn) {
   // get the current ALPHA closest keys in the router and record the min distance
   std::deque<Peer*> current_peers;
+  this->lock.lock();
   this->router->closest_peers(search_key, PEER_LOOKUP_ALPHA, current_peers);
+  this->lock.unlock();
 
   // start with the ALPHA closest keys and initialize the closest distance recorded
   std::unordered_set<Key> queried;
@@ -186,6 +191,7 @@ void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, con
     closest_peers.push_back(*curr_peer);
     closest_dist = std::min(closest_dist, Dist(search_key, curr_peer->key));
   }
+  std::sort(closest_peers.begin(), closest_peers.end(), comparator);
   for (int i = 0; i < MAX_LOOKUP_ITERS; i++) {
     // asynchronously send find node RPCs to the ALPHA closest nodes
     int lookup_count = std::min(PEER_LOOKUP_ALPHA, static_cast<int>(closest_peers.size()));

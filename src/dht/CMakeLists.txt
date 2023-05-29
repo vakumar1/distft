@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 
 project(DHT C CXX)
 
+# GRPC DEPENDENCY
 include(common.cmake)
 
 # Proto file
@@ -37,6 +38,10 @@ target_link_libraries(dht_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
+# SPDLOG DEPENDENCY
+add_subdirectory("../../dependencies/spdlog" build)
+
+# COMPILING EXECUTABLES + LIBS
 # Compile main program
 set (CMAKE_CXX_FLAGS "-g")
 set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
@@ -49,18 +54,23 @@ target_link_libraries(dht_server
   absl::flags_parse
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  spdlog::spdlog_header_only)
 
-add_executable(dht_client key.cpp key.h test_client.cpp)
+# Compile client
+set (CLIENT_SOURCES key.cpp test_client.cpp)
+set (CLIENT_HEADERS key.h)
+add_executable(dht_client ${CLIENT_SOURCES} ${CLIENT_HEADERS})
 target_link_libraries(dht_client
   dht_grpc_proto
   absl::flags
   absl::flags_parse
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  spdlog::spdlog_header_only)
 
-# Compile library for testing
+# Compile library
 add_library(dht_lib ${SOURCES} ${HEADERS})
 target_link_libraries(dht_lib
   dht_grpc_proto
@@ -68,22 +78,11 @@ target_link_libraries(dht_lib
   absl::flags_parse
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  spdlog::spdlog_header_only)
 
 # Tests
 include(CTest)
 enable_testing()
 add_subdirectory(tests tests/build)
 
-# set (TEST_SOURCES tests/test_router.cpp tests/main.cpp)
-# set (TEST_HEADERS tests/test_dht.h)
-# add_executable(test_main ${SOURCES} ${HEADERS} ${TEST_SOURCES} ${TEST_HEADERS})
-# target_link_libraries(test_main
-#   dht_grpc_proto
-#   absl::flags
-#   absl::flags_parse
-#   ${_REFLECTION}
-#   ${_GRPC_GRPCPP}
-#   ${_PROTOBUF_LIBPROTOBUF})
-
-# add_test(NAME TestRouter COMMAND test_main)

@@ -1,9 +1,6 @@
 #include "tests.h"
 
-#include <assert.h>
-#include <string>
-
-void DHTTests::test_router_insert() {
+void test_router_insert() {
   Key k1 = random_key();
   Key k2 = random_key();;
   Key k3 = k2;

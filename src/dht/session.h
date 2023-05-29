@@ -4,11 +4,16 @@
 #include <grpcpp/grpcpp.h>
 #include "dht.pb.h"
 #include "dht.grpc.pb.h"
+#include <spdlog/spdlog.h>
 
 #include <unordered_map>
 #include <string>
+#include <mutex>
 #include <deque>
+#include <unordered_set>
 #include <thread>
+#include <iostream>
+#include <chrono>
 
 #define PEER_LOOKUP_ALPHA 3
 
@@ -24,6 +29,7 @@ private:
 
   bool dying;
   Router* router;
+  std::mutex lock;
   std::unordered_map<Key, Chunk*> chunks;
   std::unique_ptr<grpc::Server> server;
   std::thread server_thread;
@@ -73,7 +79,6 @@ private:
   void rpc_caller_prelims(dht::Peer* sender);
   void rpc_caller_epilogue(dht::Peer* receiver_buffer);
   void update_peer(Key& peer_key, std::string endpoint);
-  void store_discovered_peer(Key& peer_key, std::string endpoint);
   void local_to_rpc_peer(Peer* peer, dht::Peer* rpc_peer_buffer);
   void rpc_peer_to_local(dht::Peer* rpc_peer, Peer* peer_buffer);
 

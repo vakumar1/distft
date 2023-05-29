@@ -1,7 +1,5 @@
 #include "session.h"
 
-#include <chrono>
-
 //
 // Session threads
 //
@@ -99,7 +97,9 @@ void Session::refresh_peer_thread_fn() {
       return;
     }
     std::deque<Peer*> refresh_peers;
+    this->lock.lock();
     this->router->random_per_bucket_peers(refresh_peers, unaccessed_time);
+    this->lock.unlock();
     std::deque<Peer> buffer;
     for (Peer* peer : refresh_peers) {
       this->node_lookup(peer->key, buffer);
@@ -128,7 +128,9 @@ grpc::Status Session::FindNode(grpc::ServerContext* context,
   // set closest keys
   Key search_key = Key(request->search_key());
   std::deque<Peer*> closest_keys;
+  this->lock.lock();
   this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
+  this->lock.unlock();
   for (Peer* peer : closest_keys) {
     dht::Peer* rpc_peer = response->add_closest_peers();
     rpc_peer->set_key(peer->key.to_string());
@@ -160,7 +162,9 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
 
   // no local chunk -> send closest keys
   std::deque<Peer*> closest_keys;
+  this->lock.lock();
   this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
+  this->lock.unlock();
   for (Peer* peer : closest_keys) {
     dht::Peer* rpc_peer = response->add_closest_peers();
     rpc_peer->set_key(peer->key.to_string());
@@ -253,7 +257,7 @@ void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   for (dht::Peer peer : response.closest_peers()) {
     Peer local_peer;
     this->rpc_peer_to_local(&peer, &local_peer);
-    this->store_discovered_peer(local_peer.key, local_peer.endpoint);
+    this->update_peer(local_peer.key, local_peer.endpoint);
     buffer.push_back(local_peer);
    }
 }
@@ -291,7 +295,7 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   for (dht::Peer peer : response.closest_peers()) {
     Peer local_peer;
     this->rpc_peer_to_local(&peer, &local_peer);
-    this->store_discovered_peer(local_peer.key, local_peer.endpoint);
+    this->update_peer(local_peer.key, local_peer.endpoint);
     buffer.push_back(local_peer);
    }
   return false;
@@ -305,9 +309,9 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   dht::StoreInitResponse init_response;
 
   // add sender and chunk key to request
-  dht::Peer* self_peer_rpc = new dht::Peer;
-  this->rpc_caller_prelims(self_peer_rpc);
-  init_request.set_allocated_sender(self_peer_rpc);
+  dht::Peer* self_peer_init_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_init_rpc);
+  init_request.set_allocated_sender(self_peer_init_rpc);
   init_request.set_chunk_key(chunk_key.to_string());
 
   grpc::Status status = stub->StoreInit(&init_context, init_request, &init_response);
@@ -325,6 +329,8 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   dht::StoreResponse response;
 
   // add sender and chunk key + data to request
+  dht::Peer* self_peer_rpc = new dht::Peer;
+  this->rpc_caller_prelims(self_peer_rpc);
   request.set_allocated_sender(self_peer_rpc);
   request.set_chunk_key(chunk_key.to_string());
   const char* data = reinterpret_cast<const char*>(data_buffer);
@@ -361,6 +367,8 @@ bool Session::ping(Peer* peer, Peer* receiver_peer_buffer) {
   // update receiver
   dht::Peer receiver_rpc = response.receiver();
   this->rpc_caller_epilogue(&receiver_rpc);
+  receiver_peer_buffer->key = Key(receiver_rpc.key());
+  receiver_peer_buffer->endpoint = receiver_rpc.endpoint();
   return true;
 }
 
@@ -414,41 +422,24 @@ void Session::rpc_peer_to_local(dht::Peer* rpc_peer, Peer* peer_buffer) {
 
 // update the peer's position in LRU bucket (insert if not found)
 void Session::update_peer(Key& peer_key, std::string endpoint) {
-  Peer* peer = this->router->get_peer(peer_key);
-  if (peer != NULL) {
-    this->router->update_seen_peer(peer_key);
-    return;
-  }
   
   // attempt to insert peer and evict lru peer if stale
   Peer* lru_peer;
-  while(!this->router->attempt_insert_peer(peer_key, endpoint, &lru_peer)) {
+  while(true) {
+    this->lock.lock();
+    bool inserted = this->router->attempt_insert_peer(peer_key, endpoint, &lru_peer);
+    this->lock.unlock();
+    if (inserted) {
+      return;
+    }
     Peer other_peer;
     bool lru_ping = this->ping(lru_peer, &other_peer);
     if (lru_ping && lru_peer->key == other_peer.key) {
       return;
     } else {
+      this->lock.lock();
       this->router->evict_peer(lru_peer->key);
-    }
-  }
-}
-
-// insert the new peer into the LRU bucket (do not update if already stored)
-void Session::store_discovered_peer(Key& peer_key, std::string endpoint) {
-  Peer* peer = this->router->get_peer(peer_key);
-  if (peer != NULL) {
-    return;
-  }
-  
-  // attempt to insert peer and evict lru peer if stale
-  Peer* lru_peer;
-  while(!this->router->attempt_insert_peer(peer_key, endpoint, &lru_peer)) {
-    Peer actual_peer;
-    bool lru_ping = this->ping(lru_peer, &actual_peer);
-    if (lru_ping && lru_peer->key == actual_peer.key) {
-      return;
-    } else {
-      this->router->evict_peer(lru_peer->key);
+      this->lock.unlock();
     }
   }
 }

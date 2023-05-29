@@ -5,6 +5,7 @@
 #include <bitset>
 #include <random>
 #include <iostream>
+#include <sstream>
 
 #define KEYBITS 160
 
@@ -12,10 +13,10 @@
 // Keys and Distances
 //
 
+// key for chunks and peers
 typedef std::bitset<KEYBITS> Key;
-
-// generate a random 160-bit key
 Key random_key();
+std::string hex_string(Key k);
 
 // represents a distance between two keys
 struct Dist {

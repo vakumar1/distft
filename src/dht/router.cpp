@@ -1,11 +1,5 @@
 #include "router.h"
 
-#include <string.h>
-#include <deque>
-#include <algorithm>
-#include <chrono>
-#include <random>
-
 //
 // ROUTER
 //
@@ -36,19 +30,25 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
       continue;
     }
 
+    // check if the key already exists (then just update endpoint and return)
+    for (int i = 0; i < tree->kbucket.size(); i++) {
+      if (tree->kbucket.at(i)->key == peer_key) {
+        tree->latest_access = std::chrono::steady_clock::now();
+        tree->kbucket.at(i)->endpoint = endpoint;
+        return true;
+      }
+    }
+
     // insert into bucket if it has space
     if (tree->kbucket.size() < KBUCKET_MAX) {
       tree->latest_access = std::chrono::steady_clock::now();
       Peer* peer = new Peer(peer_key, endpoint);
       tree->kbucket.push_front(peer);
-      int size_diff = 1;
 
       // adjust key counts
-      if (size_diff != 0) {
-        while (tree != NULL) {
-          tree->key_count += size_diff;
-          tree = tree->parent;
-        }
+      while (tree != NULL) {
+        tree->key_count++;
+        tree = tree->parent;
       }
       return true;
     }
@@ -83,7 +83,11 @@ void Router::evict_peer(Key& evict_key) {
     // if peer is contained at this leaf, replace and refresh it
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == evict_key) {
-        tree->kbucket.erase(tree->kbucket.begin() + i); 
+        tree->kbucket.erase(tree->kbucket.begin() + i);
+        while (tree != NULL) {
+          tree->key_count--;
+          tree = tree->parent;
+        }
         return;
       }
     }
