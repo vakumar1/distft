@@ -42,37 +42,11 @@ target_link_libraries(dht_grpc_proto
 add_subdirectory(../../dependencies/spdlog ../../../dependencies/spdlog/build)
 
 # COMPILING EXECUTABLES + LIBS
-# Compile main program
 set (CMAKE_CXX_FLAGS "-g")
-set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
-set (MAIN_SOURCE main.cpp)
-set (HEADERS key.h router.h session.h)
-add_executable(dht_server ${SOURCES} ${MAIN_SOURCE} ${HEADERS})
-target_link_libraries(dht_server
-  dht_grpc_proto
-  absl::flags
-  absl::flags_parse
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only
-)
-
-# Compile client
-set (CLIENT_SOURCES key.cpp test_client.cpp)
-set (CLIENT_HEADERS key.h)
-add_executable(dht_client ${CLIENT_SOURCES} ${CLIENT_HEADERS})
-target_link_libraries(dht_client
-  dht_grpc_proto
-  absl::flags
-  absl::flags_parse
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only
-)
 
 # Compile library
+set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
+set (MAIN_SOURCE main.cpp)
 add_library(dht_lib ${SOURCES} ${HEADERS})
 target_link_libraries(dht_lib
   dht_grpc_proto
@@ -83,6 +57,33 @@ target_link_libraries(dht_lib
   ${_PROTOBUF_LIBPROTOBUF}
   spdlog::spdlog_header_only
 )
+
+# Compile main program
+add_executable(dht_server main.cpp)
+target_link_libraries(dht_server
+  dht_grpc_proto
+  absl::flags
+  absl::flags_parse
+  ${_REFLECTION}
+  ${_GRPC_GRPCPP}
+  ${_PROTOBUF_LIBPROTOBUF}
+  spdlog::spdlog_header_only
+  dht_lib
+)
+
+# Compile client
+add_executable(dht_client test_client.cpp)
+target_link_libraries(dht_client
+  dht_grpc_proto
+  absl::flags
+  absl::flags_parse
+  ${_REFLECTION}
+  ${_GRPC_GRPCPP}
+  ${_PROTOBUF_LIBPROTOBUF}
+  spdlog::spdlog_header_only
+  dht_lib
+)
+
 
 # Tests
 include(CTest)

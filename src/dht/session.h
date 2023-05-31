@@ -16,6 +16,8 @@
 #include <chrono>
 
 #define PEER_LOOKUP_ALPHA 3
+#define MAX_LOOKUP_ITERS KEYBITS
+#define CHUNK_EXPIRE_TIME 86400
 
 // Session: represents the local state of a peer that has joined a global session
 // with at least one other peer (set at initialization)
@@ -71,7 +73,7 @@ private:
   void refresh_peer_thread_fn();
   void find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
   bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
-  void store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
+  bool store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
   // helpers

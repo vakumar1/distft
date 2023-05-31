@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <random>
 
-#define KBUCKET_MAX 5
+#define KBUCKET_MAX 20
 
 // Router: stores all key->peer mappings in an unbalanced binary tree that allows easy
 // querying of "close" peers

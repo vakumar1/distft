@@ -10,7 +10,9 @@ add_executable(dht_tests ${SOURCES} ${HEADERS})
 target_link_libraries(dht_tests PUBLIC dht_lib)
 
 set (TESTS router-insert few-session-create many-session-create 
-            few-session-store1 few-session-store2 many-session-store1 many-session-store2 many-session-store3)
+      session2-store1 session2-store3 
+      session10-store0 session10-store1 session10-store2 session10-store3
+      session50-store1 session50-store2)
 
 foreach(test IN LISTS TESTS)
   add_test(NAME ${test} COMMAND dht_tests ${test})

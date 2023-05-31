@@ -16,11 +16,7 @@ bool test_router_insert();
 // Session integration tests
 bool test_create_few_sessions();
 bool test_create_many_sessions();
-bool test_store_few_sessions1();
-bool test_store_few_sessions2();
-bool test_store_many_sessions1();
-bool test_store_many_sessions2();
-bool test_store_many_sessions3();
+std::function<bool()> store_chunks_fn(unsigned int num_chunks, unsigned int num_endpoints, unsigned int wait_time);
 
 // Session helpers
 bool create_destroy_sessions(unsigned int num_endpoints);

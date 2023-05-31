@@ -1,8 +1,5 @@
 #include "session.h"
 
-#define MAX_LOOKUP_ITERS KEYBITS
-#define CHUNK_EXPIRE_TIME 86400
-
 //
 // SESSION API
 //
@@ -42,6 +39,8 @@ Session::~Session() {
   this->shutdown_server();
   this->shutdown_rpc_threads();
 
+  spdlog::debug("{} DELETING SESSION", hex_string(this->router->get_self_peer()->key));
+
   // re-assign all chunks to other peers by republishing
   this->chunks_lock.lock();
   for (auto& pair : this->chunks) {
@@ -51,14 +50,16 @@ Session::~Session() {
     this->router_lock.lock();
     this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
     this->router_lock.unlock();
+    bool stored = false;
     for (Peer* other_peer : closest_peers) {
-      this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+      stored = stored || this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+    }
+    if (!stored) {
+      spdlog::error("{} DROPPED CHUNK (NOT ENOUGH PEERS): CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
     }
   }
-  this->chunks_lock.unlock();
 
   // memory cleanup: destroy all chunks and router
-  this->chunks_lock.lock();
   for (auto& pair : this->chunks) {
     Key key = pair.first;
     Chunk* chunk = pair.second;
@@ -102,7 +103,7 @@ void Session::publish(Chunk* chunk) {
   }
 
   // figure out whether key should also be set locally
-  if (max_dist >= Dist(chunk->key, this->router->get_self_peer()->key)) {
+  if (buffer.size() <= PEER_LOOKUP_ALPHA || max_dist >= Dist(chunk->key, this->router->get_self_peer()->key)) {
     this->chunks_lock.lock();
     this->chunks[chunk->key] = chunk;
     this->chunks_lock.unlock();
@@ -166,22 +167,22 @@ void Session::node_lookup(Key node_key, std::deque<Peer>& buffer) {
   this->lookup_helper(node_key, closest_peers, node_query_fn);
 
   // synchronously send final find node RPCs to the K closest nodes
-  std::deque<Peer> final_peers(closest_peers);
+  size_t lookup_count = closest_peers.size();
+  for (int i = 0; i < lookup_count; i++) {
+    this->find_node(&closest_peers[i], node_key, closest_peers);
+  }
+
+  // sort and return the K closest (unique) peers
   std::unordered_set<Key> seen_peers;
   for (Peer& other_peer : closest_peers) {
-    this->find_node(&other_peer, node_key, final_peers);
-  }
-  for (Peer& other_peer : final_peers) {
     if (seen_peers.count(other_peer.key) > 0) {
       continue;
     }
     buffer.push_back(other_peer);
     seen_peers.insert(other_peer.key);
   }
-
-  // return the current K closest keys
+  std::sort(buffer.begin(), buffer.end(), StaticDistComparator(node_key));
   if (buffer.size() > KBUCKET_MAX) {
-    std::sort(buffer.begin(), buffer.end(), StaticDistComparator(node_key));
     buffer.resize(KBUCKET_MAX);
   }
 }
@@ -208,18 +209,20 @@ bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_
 // and returns true if the lookup should halt
 void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn) {
   // get the current ALPHA closest keys in the router and record the min distance
-  std::deque<Peer*> current_peers;
+  std::deque<Peer*> local_peers;
   this->router_lock.lock();
-  this->router->closest_peers(search_key, PEER_LOOKUP_ALPHA, current_peers);
+  this->router->closest_peers(search_key, KBUCKET_MAX, local_peers);
   this->router_lock.unlock();
 
   // start with the ALPHA closest keys and initialize the closest distance recorded
   std::unordered_set<Key> queried;
-  Dist closest_dist = Dist();
+  Dist closest_peers_min_dist = Dist();
+  size_t closest_peers_size = closest_peers.size();
   StaticDistComparator comparator(search_key);
-  for (Peer* curr_peer : current_peers) {
+  for (Peer* curr_peer : local_peers) {
     closest_peers.push_back(*curr_peer);
-    closest_dist = std::min(closest_dist, Dist(search_key, curr_peer->key));
+    Dist curr_dist = Dist(search_key, curr_peer->key);
+    closest_peers_min_dist = std::min(closest_peers_min_dist, curr_dist);
   }
   std::sort(closest_peers.begin(), closest_peers.end(), comparator);
   for (int i = 0; i < MAX_LOOKUP_ITERS; i++) {
@@ -238,16 +241,30 @@ void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, con
       queried.insert(other_peer.key);
     }
 
-    // get the current K closest keys
+    // get the current K (unique) closest keys
+    std::unordered_set<Key> seen_peers;
+    std::deque<Peer> unique_closest_peers;
+    for (Peer& other_peer : closest_peers) {
+      if (seen_peers.count(other_peer.key) > 0) {
+        continue;
+      }
+      unique_closest_peers.push_back(other_peer);
+      seen_peers.insert(other_peer.key);
+    }
+    closest_peers = unique_closest_peers;
+    std::sort(closest_peers.begin(), closest_peers.end(), comparator);
     if (closest_peers.size() > KBUCKET_MAX) {
-      std::sort(closest_peers.begin(), closest_peers.end(), comparator);
       closest_peers.resize(KBUCKET_MAX);
     }
-    // halt once the distance has stopped improving
-    Dist new_closest_dist = Dist(search_key, closest_peers.at(0).key);
-    if (new_closest_dist >= closest_dist) {
-      break;
+
+    // halt once the distance has stopped improving and < kbucket peers were found
+    size_t new_closest_peers_size = closest_peers.size();
+    Dist new_closest_peers_min_dist = Dist(search_key, closest_peers.at(0).key);
+    if (new_closest_peers_size <= closest_peers_size && new_closest_peers_min_dist >= closest_peers_min_dist) {
+      spdlog::debug("{} TERMINATE LOOKUP (NO DIST IMPROVEMENT): SEARCH_KEY=", hex_string(this->self_key()), search_key);
+      return;
     }
-    closest_dist = new_closest_dist;
+    closest_peers_size = new_closest_peers_size;
+    closest_peers_min_dist = new_closest_peers_min_dist;
   }
 }

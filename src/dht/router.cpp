@@ -36,8 +36,6 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
     // check if the key already exists (then just update endpoint and return)
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == peer_key) {
-        // spdlog::debug("{} REFRESH: KEY={} ENDPOINT={}", hex_string(this->self_peer->key), 
-        //         hex_string(peer_key), endpoint);
         tree->latest_access = std::chrono::steady_clock::now();
         tree->kbucket.at(i)->endpoint = endpoint;
         return true;
@@ -124,8 +122,6 @@ void Router::update_seen_peer(Key& peer_key) {
     // if peer is contained at this leaf, move it to the front of the kbucket
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == peer_key) {
-        // spdlog::debug("{} REFRESH: KEY={}", hex_string(this->self_peer->key), 
-        //         hex_string(peer_key));
         tree->latest_access = std::chrono::steady_clock::now();
         std::rotate(tree->kbucket.begin(), tree->kbucket.begin() + i, tree->kbucket.begin() + i + 1);
         return;

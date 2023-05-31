@@ -76,15 +76,20 @@ void Session::cleanup_chunks_thread_fn() {
       return;
     }
     this->chunks_lock.lock();
-    // for (const auto& pair : this->chunks) {
-    //   Key chunk_key = pair.first;
-    //   Chunk* chunk = pair.second;
-    //   if (chunk->expiry_time >= std::chrono::steady_clock::now()) {
-    //     // remove chunk from local map and delete
-    //     this->chunks.erase(chunk_key);
-    //     delete chunk;
-    //   }
-    // }
+    std::vector<Key> expired_keys;
+    for (auto& pair : this->chunks) {
+      Key chunk_key = pair.first;
+      Chunk* chunk = pair.second;
+      if (chunk->expiry_time >= std::chrono::steady_clock::now()) {
+        expired_keys.push_back(chunk_key);
+      }
+    }
+    for (Key key : expired_keys) {
+      // remove chunk from local map and delete
+      delete this->chunks[key];
+      this->chunks.erase(key);
+      spdlog::debug("{} EXPIRED: CHUNK={}", hex_string(this->self_key()), hex_string(key));
+    }
     this->chunks_lock.unlock();
   }
 }
@@ -279,7 +284,7 @@ void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   for (dht::Peer peer : response.closest_peers()) {
     Peer local_peer;
     this->rpc_peer_to_local(&peer, &local_peer);
-    if (local_peer.key ==  this->router->get_self_peer()->key) {
+    if (local_peer.key ==  this->self_key()) {
       continue;
     }
     this->update_peer(local_peer.key, local_peer.endpoint);
@@ -330,7 +335,7 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   return false;
 }
 
-void Session::store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire) {
+bool Session::store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire) {
   // part i: initial storage request
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::StoreInitRequest init_request;
@@ -345,7 +350,7 @@ void Session::store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t 
 
   grpc::Status status = stub->StoreInit(&init_context, init_request, &init_response);
   if (!status.ok()) {
-    return;
+    return false;
   }
 
   // update receiver
@@ -368,11 +373,12 @@ void Session::store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t 
 
   status = stub->Store(&context, request, &response);
   if (!status.ok()) {
-    return;
+    return false;
   }
 
   // update receiver
   this->rpc_caller_epilogue(&receiver_rpc);
+  return true;
 }
 
 // send a ping to a peer
