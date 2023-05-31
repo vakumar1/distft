@@ -165,7 +165,7 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
   this->chunks_lock.lock();
   if (this->chunks.count(search_key) > 0) {
     Chunk* found_chunk = this->chunks[search_key];
-    const char* data = reinterpret_cast<const char*>(found_chunk->data);
+    const char* data = found_chunk->data;
     response->mutable_data()->assign(data, data + found_chunk->size);
     response->set_size(found_chunk->size);
     this->chunks_lock.unlock();
@@ -223,7 +223,7 @@ grpc::Status Session::Store(grpc::ServerContext* context,
 
   // store chunk locally
   size_t size = request->size();
-  std::byte* data = new std::byte[size];
+  char* data = new char[size];
   std::memcpy(data, request->data().data(), size);
   long time_to_expire = request->time_to_expire();
 
@@ -287,7 +287,7 @@ void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
    }
 }
 
-bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, std::byte** data_buffer) {
+bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer) {
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::FindValueRequest request;
   grpc::ClientContext context;
@@ -311,8 +311,9 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   // copy data into data buffer if found
   if (response.found_value()) {
     size_t size = response.size();
-    *data_buffer = new std::byte[size];
+    *data_buffer = new char[size];
     std::memcpy(*data_buffer, response.data().data(), size);
+    *size_buffer = size;
     return true;
   }
 
@@ -329,7 +330,7 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   return false;
 }
 
-void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire) {
+void Session::store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire) {
   // part i: initial storage request
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::StoreInitRequest init_request;
@@ -361,9 +362,7 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   this->rpc_caller_prelims(self_peer_rpc);
   request.set_allocated_sender(self_peer_rpc);
   request.set_chunk_key(chunk_key.to_string());
-  const char* data = reinterpret_cast<const char*>(data_buffer);
-  std::string data_str();
-  request.mutable_data()->assign(data, data + size);
+  request.mutable_data()->assign(data_buffer, data_buffer + size);
   request.set_size(size);
   request.set_time_to_expire(time_to_expire.count());
 

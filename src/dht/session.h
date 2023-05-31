@@ -40,7 +40,7 @@ private:
   void publish(Chunk* chunk);
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
-  bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** data_buffer);
+  bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
   void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn);
 
   // RPC handlers
@@ -70,8 +70,8 @@ private:
   void cleanup_chunks_thread_fn();
   void refresh_peer_thread_fn();
   void find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
-  bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, std::byte** data_buffer);
-  void store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
+  bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
+  void store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
   // helpers
@@ -95,9 +95,9 @@ public:
   Key self_key();
 
   // add chunk data to DHT
-  Key set(std::byte* data, size_t size);
+  Key set(const char* data, size_t size);
 
   // get value from DHT
   // returns false if key was not found
-  bool get(Key search_key, std::byte** data_buffer, size_t* size_buffer);
+  bool get(Key search_key, char** data_buffer, size_t* size_buffer);
 };

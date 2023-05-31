@@ -80,11 +80,11 @@ bool store_chunks(unsigned int num_chunks, unsigned int num_endpoints) {
   auto get_session = [&correct_lock, &num_correct, &chunks, num_endpoints, num_chunks](int i) {
     // create session
     Session* s = create_session(num_endpoints, i);
-    std::this_thread::sleep_for(std::chrono::seconds(3 * num_chunks));
+    std::this_thread::sleep_for(std::chrono::seconds(3));
 
     // get and validate
     for (int i = 0; i < num_chunks; i++) {
-      std::byte* data_buff;
+      char* data_buff;
       size_t size_buff;
       bool found = s->get(chunks[i]->key, &data_buff, &size_buff);
       if (!found) {
@@ -99,7 +99,7 @@ bool store_chunks(unsigned int num_chunks, unsigned int num_endpoints) {
       for (int j = 0; j < size_buff; j++) {
         if (chunks[i]->data[j] != data_buff[j]) {
           spdlog::debug("{} INCORRECT VALUE: CHUNK={} BYTE={} EXPECTED_VALUE={} ACTUAL_VALUE={}", hex_string(s->self_key()), 
-                        hex_string(chunks[i]->key), j, static_cast<int>(chunks[i]->data[j]), static_cast<int>(data_buff[j]));
+                        hex_string(chunks[i]->key), j, static_cast<uint8_t>(chunks[i]->data[j]), static_cast<uint8_t>(data_buff[j]));
           return;
         }
       }
@@ -117,8 +117,11 @@ bool store_chunks(unsigned int num_chunks, unsigned int num_endpoints) {
   }
   Session* s = create_session(num_endpoints, 0);
   for (int i = 0; i < num_chunks; i++) {
-    chunks[i] = random_chunk(i + 5);
-    s->set(chunks[i]->data, i + 5);
+    size_t size = i + 5;
+    chunks[i] = random_chunk(size);
+    char* data_buffer = new char[size];
+    std::memcpy(data_buffer, chunks[i]->data, size);
+    s->set(data_buffer, size);
   }
   while (threads.size() > 0) {
     std::thread* session_thread = threads.back();
@@ -126,13 +129,16 @@ bool store_chunks(unsigned int num_chunks, unsigned int num_endpoints) {
     session_thread->join();
     delete session_thread;
   }
+  for (int i = 0; i < num_chunks; i++) {
+    delete chunks[i];
+  }
   return num_correct == num_endpoints - 1;
 }
 
 Chunk* random_chunk(size_t size) {
-  std::byte* data_buffer = new std::byte[size];
+  char* data_buffer = new char[size];
   for (int i = 0; i < size; i++) {
-    data_buffer[i] = std::byte(std::rand() % 0xFF);
+    data_buffer[i] = static_cast<char>(std::rand() % 0xFF);
   }
   return new Chunk(data_buffer, size, true, std::chrono::steady_clock::now());
 }

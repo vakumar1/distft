@@ -24,7 +24,7 @@ private:
 public:
   // TODO: store data in filesystem
 
-  Chunk(std::byte* data, size_t size, bool original_publisher, std::chrono::time_point<std::chrono::steady_clock> expiry_time) {
+  Chunk(const char* data, size_t size, bool original_publisher, std::chrono::time_point<std::chrono::steady_clock> expiry_time) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(reinterpret_cast<const unsigned char*>(data), size, hash);
     this->key = Key();
@@ -82,7 +82,7 @@ public:
   // }
   bool original_publisher;
   Key key;
-  std::byte* data;
+  const char* data;
   size_t size;
   std::chrono::time_point<std::chrono::steady_clock> last_published;
   std::chrono::time_point<std::chrono::steady_clock> expiry_time;

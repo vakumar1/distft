@@ -13,7 +13,7 @@ int main() {
   auto start_session = [data_key](std::string my_addr, std::string other_addr) {
     Session* session = new Session(my_addr, other_addr);
     std::this_thread::sleep_for(std::chrono::seconds(1500));
-    std::byte* data;
+    char* data;
     size_t size;
     bool found = session->get(*data_key, &data, &size);
     std::cout << found << std::endl;
@@ -26,8 +26,8 @@ int main() {
   };
   std::thread t1(start_session, addr1, addr2);
   Session* session = new Session(addr2, addr1);
-  std::byte* data = new std::byte[10];
-  for (int i = 0; i < 10; i++) data[i] = static_cast<std::byte>(i);
+  char* data = new char[10];
+  for (int i = 0; i < 10; i++) data[i] = i;
   *data_key = session->set(data, 10);
   delete session;
   t1.join();

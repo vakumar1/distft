@@ -75,7 +75,7 @@ Key Session::self_key() {
 }
 
 // publish a new chunk of data to the DHT
-Key Session::set(std::byte* data, size_t size) {
+Key Session::set(const char* data, size_t size) {
   Chunk* chunk = new Chunk(data, size, true, std::chrono::steady_clock::now() + std::chrono::seconds(CHUNK_EXPIRE_TIME));
   Key chunk_key = chunk->key;
   this->publish(chunk);
@@ -111,14 +111,14 @@ void Session::publish(Chunk* chunk) {
   }
 }
 
-bool Session::get(Key search_key, std::byte** data_buffer, size_t* size_buffer) {
+bool Session::get(Key search_key, char** data_buffer, size_t* size_buffer) {
   // check if the key is cached locally
   this->chunks_lock.lock();
   if (this->chunks.count(search_key) > 0) {
     spdlog::debug("{} GET (LOCAL): CHUNK_KEY={}", hex_string(this->router->get_self_peer()->key), 
                 hex_string(search_key));
     Chunk* found_chunk = this->chunks[search_key];
-    *data_buffer = new std::byte[found_chunk->size];
+    *data_buffer = new char[found_chunk->size];
     std::memcpy(*data_buffer, found_chunk->data, found_chunk->size);
     *size_buffer = found_chunk->size;
     this->chunks_lock.unlock();
@@ -126,7 +126,7 @@ bool Session::get(Key search_key, std::byte** data_buffer, size_t* size_buffer) 
   }
   this->chunks_lock.unlock();
   std::deque<Peer> buffer;
-  return this->value_lookup(search_key, buffer, data_buffer);
+  return this->value_lookup(search_key, buffer, data_buffer, size_buffer);
   
 }
 
@@ -191,12 +191,12 @@ void Session::node_lookup(Key node_key, std::deque<Peer>& buffer) {
 // lookup a chunk in the DHT
 // return true -> data_buffer is set as a pointer to the malloc'd value
 // return false -> peer buffer is populated with K closest peers
-bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::byte** data_buffer) {
+bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer) {
   spdlog::debug("{} VALUE LOOKUP: CHUNK={}", hex_string(this->router->get_self_peer()->key), hex_string(chunk_key));
   std::deque<Peer> closest_peers;
   bool found_value = false;
-  auto value_query_fn = [this, &found_value, &chunk_key, &closest_peers, data_buffer](Peer& peer) {
-    found_value = this->find_value(&peer, chunk_key, closest_peers, data_buffer);
+  auto value_query_fn = [this, &found_value, &chunk_key, &closest_peers, data_buffer, size_buffer](Peer& peer) {
+    found_value = this->find_value(&peer, chunk_key, closest_peers, data_buffer, size_buffer);
     return found_value;
   };
   this->lookup_helper(chunk_key, closest_peers, value_query_fn);
