@@ -1,5 +1,7 @@
 #include "key.h"
 
+#include <spdlog/spdlog.h>
+
 #include <deque>
 #include <unordered_map>
 #include <chrono>

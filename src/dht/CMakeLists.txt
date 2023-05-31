@@ -39,7 +39,7 @@ target_link_libraries(dht_grpc_proto
   ${_PROTOBUF_LIBPROTOBUF})
 
 # SPDLOG DEPENDENCY
-add_subdirectory("../../dependencies/spdlog" build)
+add_subdirectory(../../dependencies/spdlog ../../../dependencies/spdlog/build)
 
 # COMPILING EXECUTABLES + LIBS
 # Compile main program
@@ -55,7 +55,8 @@ target_link_libraries(dht_server
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only)
+  spdlog::spdlog_header_only
+)
 
 # Compile client
 set (CLIENT_SOURCES key.cpp test_client.cpp)
@@ -68,7 +69,8 @@ target_link_libraries(dht_client
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only)
+  spdlog::spdlog_header_only
+)
 
 # Compile library
 add_library(dht_lib ${SOURCES} ${HEADERS})
@@ -79,10 +81,11 @@ target_link_libraries(dht_lib
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only)
+  spdlog::spdlog_header_only
+)
 
 # Tests
 include(CTest)
 enable_testing()
-add_subdirectory(tests tests/build)
+add_subdirectory(tests ../tests/build)
 

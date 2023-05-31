@@ -34,7 +34,8 @@ message FindValueResponse {
   Peer receiver = 1;
   bool found_value = 2;
   bytes data = 3;
-  repeated Peer closest_peers = 4;
+  int32 size = 4;
+  repeated Peer closest_peers = 5;
 }
 
 message StoreInitRequest {
@@ -51,7 +52,8 @@ message StoreRequest {
   Peer sender = 1;
   bytes chunk_key = 2;
   bytes data = 3;
-  int64 time_to_expire = 4;
+  int32 size = 4;
+  int64 time_to_expire = 5;
 }
 
 message StoreResponse {

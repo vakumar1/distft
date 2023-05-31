@@ -9,7 +9,8 @@ set (HEADERS tests.h)
 add_executable(dht_tests ${SOURCES} ${HEADERS})
 target_link_libraries(dht_tests PUBLIC dht_lib)
 
-set (TESTS router-insert few-session-create many-session-create)
+set (TESTS router-insert few-session-create many-session-create 
+            few-session-store1 few-session-store2 many-session-store1 many-session-store2 many-session-store3)
 
 foreach(test IN LISTS TESTS)
   add_test(NAME ${test} COMMAND dht_tests ${test})

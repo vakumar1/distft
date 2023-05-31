@@ -1,7 +1,12 @@
 #include "session.h"
 
 int main() {
+  #ifdef DEBUG
+  spdlog::set_level(spdlog::level::debug);
+  #else
   spdlog::set_level(spdlog::level::info);
+  #endif
+  
   std::string addr1("0.0.0.0:50051");
   std::string addr2("0.0.0.0:50053");
   Key* data_key = new Key;
@@ -14,7 +19,7 @@ int main() {
     std::cout << found << std::endl;
     if (found) {
       for (int i = 0; i < size; i++) {
-        std::cout << static_cast<int>(i) << std::endl;
+        std::cout << static_cast<int>(data[i]) << std::endl;
       }
     }
     delete session;

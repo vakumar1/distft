@@ -19,6 +19,9 @@ Router::~Router() {
 // attempt to insert the peer into the correct kbucket
 // if the kbucket is full, return the LRU peer
 bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru_peer_buffer) {
+  if (peer_key == this->self_peer->key) {
+    return true;
+  }
   BinaryTree* tree = this->table;
   for (int i = KEYBITS - 1; i >= 0; i--) {
     bool key_bit = peer_key[tree->split_bit_index];
@@ -33,6 +36,8 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
     // check if the key already exists (then just update endpoint and return)
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == peer_key) {
+        // spdlog::debug("{} REFRESH: KEY={} ENDPOINT={}", hex_string(this->self_peer->key), 
+        //         hex_string(peer_key), endpoint);
         tree->latest_access = std::chrono::steady_clock::now();
         tree->kbucket.at(i)->endpoint = endpoint;
         return true;
@@ -41,6 +46,8 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
 
     // insert into bucket if it has space
     if (tree->kbucket.size() < KBUCKET_MAX) {
+      spdlog::debug("{} INSERT: KEY={} ENDPOINT={}", hex_string(this->self_peer->key), 
+                hex_string(peer_key), endpoint);
       tree->latest_access = std::chrono::steady_clock::now();
       Peer* peer = new Peer(peer_key, endpoint);
       tree->kbucket.push_front(peer);
@@ -70,6 +77,9 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
 
 // evict peer from its kbucket
 void Router::evict_peer(Key& evict_key) {
+    if (evict_key == this->self_peer->key) {
+      return;
+    }
   BinaryTree* tree = this->table;
   for (int i = KEYBITS - 1; i >= 0; i--) {
     bool key_bit = evict_key[tree->split_bit_index];
@@ -83,6 +93,8 @@ void Router::evict_peer(Key& evict_key) {
     // if peer is contained at this leaf, replace and refresh it
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == evict_key) {
+        spdlog::debug("{} EVICT: KEY={}", hex_string(this->self_peer->key), 
+                hex_string(evict_key));
         tree->kbucket.erase(tree->kbucket.begin() + i);
         while (tree != NULL) {
           tree->key_count--;
@@ -96,6 +108,9 @@ void Router::evict_peer(Key& evict_key) {
 
 // move a contacted peer to front of its kbucket
 void Router::update_seen_peer(Key& peer_key) {
+  if (peer_key == this->self_peer->key) {
+    return;
+  }
   BinaryTree* tree = this->table;
   for (int i = KEYBITS - 1; i >= 0; i--) {
     bool key_bit = peer_key[tree->split_bit_index];
@@ -109,6 +124,8 @@ void Router::update_seen_peer(Key& peer_key) {
     // if peer is contained at this leaf, move it to the front of the kbucket
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == peer_key) {
+        // spdlog::debug("{} REFRESH: KEY={}", hex_string(this->self_peer->key), 
+        //         hex_string(peer_key));
         tree->latest_access = std::chrono::steady_clock::now();
         std::rotate(tree->kbucket.begin(), tree->kbucket.begin() + i, tree->kbucket.begin() + i + 1);
         return;

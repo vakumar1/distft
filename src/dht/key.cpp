@@ -21,7 +21,7 @@ std::string hex_string(Key k) {
     byte_hex << std::hex << byte_bitset.to_ulong();
     res.append(byte_hex.str());
   }
-  return res;
+  return res.substr(0, 6);
 }
 
 const bool Dist::operator < (const Dist& d) const {

@@ -52,6 +52,7 @@ void Session::republish_chunks_thread_fn() {
     if (this->dying) {
       return;
     }
+    this->chunks_lock.lock();
     for (const auto& pair : this->chunks) {
       Key chunk_key = pair.first;
       Chunk* chunk = pair.second;
@@ -62,6 +63,7 @@ void Session::republish_chunks_thread_fn() {
         this->publish(chunk);
       }
     }
+    this->chunks_lock.unlock();
   }
 }
 
@@ -73,15 +75,17 @@ void Session::cleanup_chunks_thread_fn() {
     if (this->dying) {
       return;
     }
-    for (const auto& pair : this->chunks) {
-      Key chunk_key = pair.first;
-      Chunk* chunk = pair.second;
-      if (chunk->expiry_time >= std::chrono::steady_clock::now()) {
-        // remove chunk from local map and delete
-        this->chunks.erase(chunk_key);
-        delete chunk;
-      }
-    }
+    this->chunks_lock.lock();
+    // for (const auto& pair : this->chunks) {
+    //   Key chunk_key = pair.first;
+    //   Chunk* chunk = pair.second;
+    //   if (chunk->expiry_time >= std::chrono::steady_clock::now()) {
+    //     // remove chunk from local map and delete
+    //     this->chunks.erase(chunk_key);
+    //     delete chunk;
+    //   }
+    // }
+    this->chunks_lock.unlock();
   }
 }
 
@@ -97,9 +101,9 @@ void Session::refresh_peer_thread_fn() {
       return;
     }
     std::deque<Peer*> refresh_peers;
-    this->lock.lock();
+    this->router_lock.lock();
     this->router->random_per_bucket_peers(refresh_peers, unaccessed_time);
-    this->lock.unlock();
+    this->router_lock.unlock();
     std::deque<Peer> buffer;
     for (Peer* peer : refresh_peers) {
       this->node_lookup(peer->key, buffer);
@@ -118,7 +122,7 @@ void Session::refresh_peer_thread_fn() {
 grpc::Status Session::FindNode(grpc::ServerContext* context, 
                             const dht::FindNodeRequest* request,
                             dht::FindNodeResponse* response) {
-  
+
   // update sender and set receiver
   dht::Peer sender = request->sender();
   dht::Peer* receiver = new dht::Peer;
@@ -127,10 +131,13 @@ grpc::Status Session::FindNode(grpc::ServerContext* context,
 
   // set closest keys
   Key search_key = Key(request->search_key());
+  spdlog::debug("{} FIND NODE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->router->get_self_peer()->key), 
+                hex_string(Key(sender.key())), hex_string(search_key));
+              
   std::deque<Peer*> closest_keys;
-  this->lock.lock();
+  this->router_lock.lock();
   this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
-  this->lock.unlock();
+  this->router_lock.unlock();
   for (Peer* peer : closest_keys) {
     dht::Peer* rpc_peer = response->add_closest_peers();
     rpc_peer->set_key(peer->key.to_string());
@@ -151,20 +158,27 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
   response->set_allocated_receiver(receiver);
 
   Key search_key = Key(request->search_key());
+  spdlog::debug("{} FIND VALUE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->router->get_self_peer()->key), 
+                hex_string(Key(sender.key())), hex_string(search_key));
+
   // found key -> send data
+  this->chunks_lock.lock();
   if (this->chunks.count(search_key) > 0) {
     Chunk* found_chunk = this->chunks[search_key];
     const char* data = reinterpret_cast<const char*>(found_chunk->data);
     response->mutable_data()->assign(data, data + found_chunk->size);
+    response->set_size(found_chunk->size);
+    this->chunks_lock.unlock();
     response->set_found_value(true);
     return grpc::Status::OK;
   }
+  this->chunks_lock.unlock();
 
   // no local chunk -> send closest keys
   std::deque<Peer*> closest_keys;
-  this->lock.lock();
+  this->router_lock.lock();
   this->router->closest_peers(search_key, KBUCKET_MAX, closest_keys);
-  this->lock.unlock();
+  this->router_lock.unlock();
   for (Peer* peer : closest_keys) {
     dht::Peer* rpc_peer = response->add_closest_peers();
     rpc_peer->set_key(peer->key.to_string());
@@ -188,7 +202,11 @@ grpc::Status Session::StoreInit(grpc::ServerContext* context,
 
   // continue store if data not stored locally
   Key chunk_key = Key(request->chunk_key());
+  spdlog::debug("{} STORE RPC: SENDER={} CHUNK_KEY={}", hex_string(this->router->get_self_peer()->key), 
+                hex_string(Key(sender.key())), hex_string(chunk_key));
+  this->chunks_lock.lock();
   response->set_continue_store(this->chunks.count(chunk_key) == 0);
+  this->chunks_lock.unlock();
   return grpc::Status::OK;
 
 }
@@ -204,13 +222,15 @@ grpc::Status Session::Store(grpc::ServerContext* context,
   response->set_allocated_receiver(receiver);
 
   // store chunk locally
-  size_t size = request->data().size();
+  size_t size = request->size();
   std::byte* data = new std::byte[size];
   std::memcpy(data, request->data().data(), size);
   long time_to_expire = request->time_to_expire();
 
   Chunk* chunk = new Chunk(data, size, false, std::chrono::steady_clock::now() + std::chrono::seconds(time_to_expire));
+  this->chunks_lock.lock();
   this->chunks[chunk->key] = chunk;
+  this->chunks_lock.unlock();
   return grpc::Status::OK;
 }
 
@@ -224,6 +244,8 @@ grpc::Status Session::Ping(grpc::ServerContext* context,
   this->rpc_handler_prelims(&sender, receiver);
   response->set_allocated_receiver(receiver);
 
+  spdlog::debug("{} PING: SENDER={}", hex_string(this->router->get_self_peer()->key),
+                hex_string(Key(sender.key())));
   return grpc::Status::OK;
 }
 
@@ -257,6 +279,9 @@ void Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   for (dht::Peer peer : response.closest_peers()) {
     Peer local_peer;
     this->rpc_peer_to_local(&peer, &local_peer);
+    if (local_peer.key ==  this->router->get_self_peer()->key) {
+      continue;
+    }
     this->update_peer(local_peer.key, local_peer.endpoint);
     buffer.push_back(local_peer);
    }
@@ -285,7 +310,7 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
 
   // copy data into data buffer if found
   if (response.found_value()) {
-    size_t size = response.data().size();
+    size_t size = response.size();
     *data_buffer = new std::byte[size];
     std::memcpy(*data_buffer, response.data().data(), size);
     return true;
@@ -295,6 +320,9 @@ bool Session::find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, 
   for (dht::Peer peer : response.closest_peers()) {
     Peer local_peer;
     this->rpc_peer_to_local(&peer, &local_peer);
+    if (local_peer.key ==  this->router->get_self_peer()->key) {
+      continue;
+    }
     this->update_peer(local_peer.key, local_peer.endpoint);
     buffer.push_back(local_peer);
    }
@@ -334,7 +362,9 @@ void Session::store(Peer* peer, Key& chunk_key, std::byte* data_buffer, size_t s
   request.set_allocated_sender(self_peer_rpc);
   request.set_chunk_key(chunk_key.to_string());
   const char* data = reinterpret_cast<const char*>(data_buffer);
+  std::string data_str();
   request.mutable_data()->assign(data, data + size);
+  request.set_size(size);
   request.set_time_to_expire(time_to_expire.count());
 
   status = stub->Store(&context, request, &response);
@@ -426,9 +456,9 @@ void Session::update_peer(Key& peer_key, std::string endpoint) {
   // attempt to insert peer and evict lru peer if stale
   Peer* lru_peer;
   while(true) {
-    this->lock.lock();
+    this->router_lock.lock();
     bool inserted = this->router->attempt_insert_peer(peer_key, endpoint, &lru_peer);
-    this->lock.unlock();
+    this->router_lock.unlock();
     if (inserted) {
       return;
     }
@@ -437,9 +467,9 @@ void Session::update_peer(Key& peer_key, std::string endpoint) {
     if (lru_ping && lru_peer->key == other_peer.key) {
       return;
     } else {
-      this->lock.lock();
+      this->router_lock.lock();
       this->router->evict_peer(lru_peer->key);
-      this->lock.unlock();
+      this->router_lock.unlock();
     }
   }
 }

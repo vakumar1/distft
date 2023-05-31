@@ -1,6 +1,6 @@
 #include "tests.h"
 
-void test_router_insert() {
+bool test_router_insert() {
   Key k1 = random_key();
   Key k2 = random_key();;
   Key k3 = k2;
@@ -13,9 +13,6 @@ void test_router_insert() {
   router.attempt_insert_peer(k3, e3, NULL);
   std::deque<Peer*> peers;
   router.all_peers(peers);
-  assert(peers.size() == 2);
-  for (Peer* peer : peers) {
-    
-  }
+  return peers.size() == 2;
 }
 

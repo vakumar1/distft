@@ -29,8 +29,9 @@ private:
 
   bool dying;
   Router* router;
-  std::mutex lock;
+  std::mutex router_lock;
   std::unordered_map<Key, Chunk*> chunks;
+  std::mutex chunks_lock;
   std::unique_ptr<grpc::Server> server;
   std::thread server_thread;
   std::deque<std::thread*> rpc_threads;
@@ -89,6 +90,9 @@ public:
 
   // destructor: tear down session and re-distribute keys to other peers
   ~Session();
+
+  // return session's key
+  Key self_key();
 
   // add chunk data to DHT
   Key set(std::byte* data, size_t size);
