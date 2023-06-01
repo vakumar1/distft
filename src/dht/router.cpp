@@ -160,7 +160,7 @@ Peer* Router::get_self_peer() {
 // get a random peer from each bucket that has not been accessed in the given amount of time
 void Router::random_per_bucket_peers(std::deque<Peer*>& peer_buffer, std::chrono::seconds unaccessed_time) {
   BinaryTree* tree = this->table;
-
+  this->table->random_per_bucket_peers_helper(peer_buffer, unaccessed_time);
 }
 
 //

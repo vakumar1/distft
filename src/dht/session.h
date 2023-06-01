@@ -87,14 +87,14 @@ private:
 
 
 public:
-  // constructor: set up session and initialize routing table with initial peer
-  Session(std::string self_endpoint, std::string init_endpoint);
-
-  // destructor: tear down session and re-distribute keys to other peers
-  ~Session();
-
   // return session's key
   Key self_key();
+
+  // startup session with self lookup
+  void startup(std::string self_endpoint, std::string init_endpoint);
+
+  // teardown session (with option to forego republishing local chunks)
+  void teardown(bool republish);
 
   // add chunk data to DHT
   Key set(const char* data, size_t size);

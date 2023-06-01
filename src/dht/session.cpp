@@ -4,7 +4,11 @@
 // SESSION API
 //
 
-Session::Session(std::string self_endpoint, std::string init_endpoint) {
+Key Session::self_key() {
+  return this->router->get_self_peer()->key;
+}
+
+void Session::startup(std::string self_endpoint, std::string init_endpoint) {
   this->dying = false;
 
   // generate self's key and get the initial peer's key (temporarily create router)
@@ -28,10 +32,9 @@ Session::Session(std::string self_endpoint, std::string init_endpoint) {
 
   // perform a node lookup on self
   this->self_lookup(self_key);
-  
 }
 
-Session::~Session() {
+void Session::teardown(bool republish) {
   // set dying to true to invalidate all peer/chunk data for RPCs
   this->dying = true;
 
@@ -39,24 +42,28 @@ Session::~Session() {
   this->shutdown_server();
   this->shutdown_rpc_threads();
 
-  spdlog::debug("{} DELETING SESSION", hex_string(this->router->get_self_peer()->key));
+  spdlog::debug("{} DELETING SESSION", hex_string(this->self_key()));
 
   // re-assign all chunks to other peers by republishing
   this->chunks_lock.lock();
-  for (auto& pair : this->chunks) {
-    Key chunk_key = pair.first;
-    Chunk* chunk = pair.second;
-    std::deque<Peer*> closest_peers;
-    this->router_lock.lock();
-    this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
-    this->router_lock.unlock();
-    bool stored = false;
-    for (Peer* other_peer : closest_peers) {
-      stored = stored || this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+  if (republish) {
+    for (auto& pair : this->chunks) {
+      Key chunk_key = pair.first;
+      Chunk* chunk = pair.second;
+      std::deque<Peer*> closest_peers;
+      this->router_lock.lock();
+      this->router->closest_peers(chunk_key, PEER_LOOKUP_ALPHA, closest_peers);
+      this->router_lock.unlock();
+      bool stored = false;
+      for (Peer* other_peer : closest_peers) {
+        stored = stored || this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+      }
+      if (!stored) {
+        spdlog::error("{} DROPPED CHUNK (NOT ENOUGH PEERS): CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
+      }
     }
-    if (!stored) {
-      spdlog::error("{} DROPPED CHUNK (NOT ENOUGH PEERS): CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
-    }
+  } else {
+    spdlog::error("{} DROPPING ALL CHUNKS", hex_string(this->self_key()));
   }
 
   // memory cleanup: destroy all chunks and router
@@ -68,11 +75,6 @@ Session::~Session() {
   this->chunks_lock.unlock();
 
   delete this->router;
-
-}
-
-Key Session::self_key() {
-  return this->router->get_self_peer()->key;
 }
 
 // publish a new chunk of data to the DHT
@@ -88,7 +90,7 @@ Key Session::set(const char* data, size_t size) {
 // need to be stored locally
 void Session::publish(Chunk* chunk) {
   Key chunk_key = chunk->key;
-  spdlog::debug("{} PUBLISH: CHUNK_KEY={}", hex_string(this->router->get_self_peer()->key), 
+  spdlog::debug("{} PUBLISH: CHUNK_KEY={}", hex_string(this->self_key()), 
                 hex_string(chunk_key));
   std::deque<Peer> buffer;
   this->node_lookup(chunk_key, buffer);
@@ -96,14 +98,14 @@ void Session::publish(Chunk* chunk) {
   // select the ALPHA closest keys to store the chunk
   Dist max_dist;
   max_dist.value.reset();
-  for (int i = 0; i < PEER_LOOKUP_ALPHA && i < buffer.size(); i++) {
+  for (int i = 0; i < KBUCKET_MAX && i < buffer.size(); i++) {
     Peer other_peer = buffer.at(i);
     this->store(&other_peer, chunk->key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
     max_dist = std::max(max_dist, Dist(chunk->key, other_peer.key));
   }
 
   // figure out whether key should also be set locally
-  if (buffer.size() <= PEER_LOOKUP_ALPHA || max_dist >= Dist(chunk->key, this->router->get_self_peer()->key)) {
+  if (buffer.size() <= KBUCKET_MAX || max_dist >= Dist(chunk->key, this->self_key())) {
     this->chunks_lock.lock();
     this->chunks[chunk->key] = chunk;
     this->chunks_lock.unlock();
@@ -116,7 +118,7 @@ bool Session::get(Key search_key, char** data_buffer, size_t* size_buffer) {
   // check if the key is cached locally
   this->chunks_lock.lock();
   if (this->chunks.count(search_key) > 0) {
-    spdlog::debug("{} GET (LOCAL): CHUNK_KEY={}", hex_string(this->router->get_self_peer()->key), 
+    spdlog::debug("{} GET (LOCAL): CHUNK_KEY={}", hex_string(this->self_key()), 
                 hex_string(search_key));
     Chunk* found_chunk = this->chunks[search_key];
     *data_buffer = new char[found_chunk->size];
@@ -148,17 +150,17 @@ void Session::self_lookup(Key self_key) {
   // send pings to all peers
   std::deque<Peer*> peers;
   this->router_lock.lock();
-  this->router->all_peers(peers);
+  this->router->random_per_bucket_peers(peers, std::chrono::seconds(0));
   this->router_lock.unlock();
   for (Peer* other_peer : peers) {
-    Peer actual_peer;
-    this->ping(other_peer, &actual_peer);
+    std::deque<Peer> dummy_buffer;
+    this->node_lookup(other_peer->key, dummy_buffer);
   }
 }
 
 // lookup a key in the DHT (populate buffer with K closest peers)
 void Session::node_lookup(Key node_key, std::deque<Peer>& buffer) {
-  spdlog::debug("{} NODE LOOKUP", hex_string(this->router->get_self_peer()->key));
+  spdlog::debug("{} NODE LOOKUP", hex_string(this->self_key()));
   std::deque<Peer> closest_peers;
   auto node_query_fn = [this, &node_key, &closest_peers](Peer& peer) {
     this->find_node(&peer, node_key, closest_peers);
@@ -193,7 +195,7 @@ void Session::node_lookup(Key node_key, std::deque<Peer>& buffer) {
 // return true -> data_buffer is set as a pointer to the malloc'd value
 // return false -> peer buffer is populated with K closest peers
 bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer) {
-  spdlog::debug("{} VALUE LOOKUP: CHUNK={}", hex_string(this->router->get_self_peer()->key), hex_string(chunk_key));
+  spdlog::debug("{} VALUE LOOKUP: CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
   std::deque<Peer> closest_peers;
   bool found_value = false;
   auto value_query_fn = [this, &found_value, &chunk_key, &closest_peers, data_buffer, size_buffer](Peer& peer) {
@@ -261,7 +263,8 @@ void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, con
     size_t new_closest_peers_size = closest_peers.size();
     Dist new_closest_peers_min_dist = Dist(search_key, closest_peers.at(0).key);
     if (new_closest_peers_size <= closest_peers_size && new_closest_peers_min_dist >= closest_peers_min_dist) {
-      spdlog::debug("{} TERMINATE LOOKUP (NO DIST IMPROVEMENT): SEARCH_KEY=", hex_string(this->self_key()), search_key);
+      spdlog::debug("{} TERMINATE LOOKUP (NO DIST IMPROVEMENT): SEARCH_KEY={}", 
+                      hex_string(this->self_key()), hex_string(search_key));
       return;
     }
     closest_peers_size = new_closest_peers_size;

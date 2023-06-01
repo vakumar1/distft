@@ -11,7 +11,8 @@ int main() {
   std::string addr2("0.0.0.0:50053");
   Key* data_key = new Key;
   auto start_session = [data_key](std::string my_addr, std::string other_addr) {
-    Session* session = new Session(my_addr, other_addr);
+    Session* session = new Session;
+    session->startup(my_addr, other_addr);
     std::this_thread::sleep_for(std::chrono::seconds(1500));
     char* data;
     size_t size;
@@ -22,13 +23,16 @@ int main() {
         std::cout << static_cast<int>(data[i]) << std::endl;
       }
     }
+    session->teardown(false);
     delete session;
   };
   std::thread t1(start_session, addr1, addr2);
-  Session* session = new Session(addr2, addr1);
+  Session* session = new Session;
+  session->startup(addr2, addr1);
   char* data = new char[10];
   for (int i = 0; i < 10; i++) data[i] = i;
   *data_key = session->set(data, 10);
+  session->teardown(false);
   delete session;
   t1.join();
   return 0;

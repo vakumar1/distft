@@ -136,7 +136,7 @@ grpc::Status Session::FindNode(grpc::ServerContext* context,
 
   // set closest keys
   Key search_key = Key(request->search_key());
-  spdlog::debug("{} FIND NODE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->router->get_self_peer()->key), 
+  spdlog::debug("{} FIND NODE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->self_key()), 
                 hex_string(Key(sender.key())), hex_string(search_key));
               
   std::deque<Peer*> closest_keys;
@@ -163,7 +163,7 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
   response->set_allocated_receiver(receiver);
 
   Key search_key = Key(request->search_key());
-  spdlog::debug("{} FIND VALUE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->router->get_self_peer()->key), 
+  spdlog::debug("{} FIND VALUE RPC: SENDER={} SEARCH_KEY={}", hex_string(this->self_key()), 
                 hex_string(Key(sender.key())), hex_string(search_key));
 
   // found key -> send data
@@ -207,7 +207,7 @@ grpc::Status Session::StoreInit(grpc::ServerContext* context,
 
   // continue store if data not stored locally
   Key chunk_key = Key(request->chunk_key());
-  spdlog::debug("{} STORE RPC: SENDER={} CHUNK_KEY={}", hex_string(this->router->get_self_peer()->key), 
+  spdlog::debug("{} STORE RPC: SENDER={} CHUNK_KEY={}", hex_string(this->self_key()), 
                 hex_string(Key(sender.key())), hex_string(chunk_key));
   this->chunks_lock.lock();
   response->set_continue_store(this->chunks.count(chunk_key) == 0);
@@ -249,8 +249,7 @@ grpc::Status Session::Ping(grpc::ServerContext* context,
   this->rpc_handler_prelims(&sender, receiver);
   response->set_allocated_receiver(receiver);
 
-  spdlog::debug("{} PING: SENDER={}", hex_string(this->router->get_self_peer()->key),
-                hex_string(Key(sender.key())));
+  spdlog::debug("{} PING: SENDER={}", hex_string(this->self_key()), hex_string(Key(sender.key())));
   return grpc::Status::OK;
 }
 
