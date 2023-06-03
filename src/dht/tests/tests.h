@@ -16,8 +16,6 @@
 bool test_router_insert();
 
 // Session integration tests
-bool test_create_few_sessions();
-bool test_create_many_sessions();
+std::function<bool()> create_destroy_sessions(unsigned int num_endpoints);
 std::function<bool()> store_chunks_fn(unsigned int num_chunks, unsigned int num_endpoints);
-std::function<bool()> churn_chunks_fn(unsigned int num_chunks, unsigned int num_servers, unsigned int num_clients);
-
+std::function<bool()> churn_chunks_fn(unsigned int num_chunks, unsigned int num_servers, unsigned int num_clients, unsigned int chunk_tol);

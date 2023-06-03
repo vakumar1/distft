@@ -4,8 +4,8 @@ int main(int argc, char** argv) {
   spdlog::set_level(spdlog::level::debug);
   std::unordered_map<std::string, std::function<bool()>> tests = {
     {"router-insert", test_router_insert},
-    {"few-session-create", test_create_few_sessions},
-    {"many-session-create", test_create_many_sessions},
+    {"few-session-create", create_destroy_sessions(3)},
+    {"many-session-create", create_destroy_sessions(20)},
     {"session2-store1", store_chunks_fn(1, 2)},
     {"session2-store3", store_chunks_fn(3, 2)},
     {"session10-store0", store_chunks_fn(1, 10)},
@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     {"session50-store3", store_chunks_fn(1000, 50)},
     {"session250-store2", store_chunks_fn(100, 250)},
     {"session250-store3", store_chunks_fn(1000, 250)},
-    // {"churn-10-50-1", churn_chunks_fn(1, 10, 50)},
+    {"churn-10-50-1", churn_chunks_fn(1, 10, 50, 10)},
   };
 
   if (argc != 2 || tests.count(std::string(argv[1])) == 0) {

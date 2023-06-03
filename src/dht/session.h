@@ -18,6 +18,7 @@
 #define PEER_LOOKUP_ALPHA 3
 #define MAX_LOOKUP_ITERS KEYBITS
 #define CHUNK_EXPIRE_TIME 86400
+#define CHUNK_REPUBLISH_TIME 3600
 
 // Session: represents the local state of a peer that has joined a global session
 // with at least one other peer (set at initialization)
@@ -43,7 +44,7 @@ private:
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
   bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
-  void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn);
+  void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&, std::mutex&, unsigned int&)>& query_fn);
 
   // RPC handlers
   void init_server(std::string server_address);
@@ -71,9 +72,9 @@ private:
   void republish_chunks_thread_fn();
   void cleanup_chunks_thread_fn();
   void refresh_peer_thread_fn();
-  void find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
-  bool find_value(Peer* peer, Key& search_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
-  bool store(Peer* peer, Key& chunk_key, const char* data_buffer, size_t size, std::chrono::steady_clock::duration time_to_expire);
+  bool find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
+  bool find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
+  bool store(Peer* peer, Chunk* chunk);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
   // helpers
@@ -87,8 +88,15 @@ private:
 
 
 public:
+  Session() {
+
+  }
+
   // return session's key
   Key self_key();
+
+  // return session's endpoint
+  std::string self_endpoint();
 
   // startup session with self lookup
   void startup(std::string self_endpoint, std::string init_endpoint);

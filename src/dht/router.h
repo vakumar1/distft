@@ -33,7 +33,7 @@ private:
     bool leaf;
     unsigned int split_bit_index;
     unsigned int key_count;
-    std::chrono::time_point<std::chrono::steady_clock> latest_access;
+    std::chrono::time_point<std::chrono::system_clock> latest_access;
     BinaryTree* parent;
     BinaryTree* zero_tree;
     BinaryTree* one_tree;
@@ -58,7 +58,6 @@ public:
   // mutating router state
   bool attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru_peer_buffer);
   void evict_peer(Key& evict_key);
-  void update_seen_peer(Key& peer_key);
 
   // accessing peers
   Peer* get_peer(Key& key);
@@ -66,7 +65,6 @@ public:
   void closest_peers(Key& key, unsigned int n, std::deque<Peer*>& buffer);
   void all_peers(std::deque<Peer*>& buffer);
   void random_per_bucket_peers(std::deque<Peer*>& peer_buffer, std::chrono::seconds unaccessed_time);
-
 
 };
 

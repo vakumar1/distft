@@ -19,7 +19,7 @@ Router::~Router() {
 // attempt to insert the peer into the correct kbucket
 // if the kbucket is full, return the LRU peer
 bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru_peer_buffer) {
-  if (peer_key == this->self_peer->key) {
+  if (peer_key == this->self_peer->key || endpoint == this->self_peer->endpoint) {
     return true;
   }
   BinaryTree* tree = this->table;
@@ -33,11 +33,12 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
       continue;
     }
 
-    // check if the key already exists (then just update endpoint and return)
+    // check if the key already exists (then just update endpoint, push to front, and return)
     for (int i = 0; i < tree->kbucket.size(); i++) {
       if (tree->kbucket.at(i)->key == peer_key) {
-        tree->latest_access = std::chrono::steady_clock::now();
+        tree->latest_access = std::chrono::system_clock::now();
         tree->kbucket.at(i)->endpoint = endpoint;
+        std::rotate(tree->kbucket.begin(), tree->kbucket.begin() + i, tree->kbucket.begin() + i + 1);
         return true;
       }
     }
@@ -46,7 +47,7 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
     if (tree->kbucket.size() < KBUCKET_MAX) {
       spdlog::debug("{} INSERT: KEY={} ENDPOINT={}", hex_string(this->self_peer->key), 
                 hex_string(peer_key), endpoint);
-      tree->latest_access = std::chrono::steady_clock::now();
+      tree->latest_access = std::chrono::system_clock::now();
       Peer* peer = new Peer(peer_key, endpoint);
       tree->kbucket.push_front(peer);
 
@@ -75,9 +76,9 @@ bool Router::attempt_insert_peer(Key& peer_key, std::string endpoint, Peer** lru
 
 // evict peer from its kbucket
 void Router::evict_peer(Key& evict_key) {
-    if (evict_key == this->self_peer->key) {
-      return;
-    }
+  if (evict_key == this->self_peer->key) {
+    return;
+  }
   BinaryTree* tree = this->table;
   for (int i = KEYBITS - 1; i >= 0; i--) {
     bool key_bit = evict_key[tree->split_bit_index];
@@ -104,32 +105,6 @@ void Router::evict_peer(Key& evict_key) {
   }
 }
 
-// move a contacted peer to front of its kbucket
-void Router::update_seen_peer(Key& peer_key) {
-  if (peer_key == this->self_peer->key) {
-    return;
-  }
-  BinaryTree* tree = this->table;
-  for (int i = KEYBITS - 1; i >= 0; i--) {
-    bool key_bit = peer_key[tree->split_bit_index];
-
-    // traverse until we hit a leaf
-    if (!tree->leaf) {
-      tree = key_bit ? tree->one_tree : tree->zero_tree;
-      continue;
-    }
-
-    // if peer is contained at this leaf, move it to the front of the kbucket
-    for (int i = 0; i < tree->kbucket.size(); i++) {
-      if (tree->kbucket.at(i)->key == peer_key) {
-        tree->latest_access = std::chrono::steady_clock::now();
-        std::rotate(tree->kbucket.begin(), tree->kbucket.begin() + i, tree->kbucket.begin() + i + 1);
-        return;
-      }
-    }
-  }
-
-}
 
 // return vector of (potentially less than) n closest peers to the given keys
 void Router::closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer) {
@@ -171,7 +146,7 @@ Router::BinaryTree::BinaryTree(int split_bit_index, BinaryTree* parent) {
   this->leaf = true;
   this->split_bit_index = split_bit_index;
   this->key_count = 0;
-  this->latest_access = std::chrono::steady_clock::now();
+  this->latest_access = std::chrono::system_clock::now();
   this->parent = parent;
   this->zero_tree = NULL;
   this->one_tree = NULL;
@@ -216,7 +191,7 @@ void Router::BinaryTree::split() {
 void Router::BinaryTree::tree_closest_peers(Key& search_key, unsigned int n, std::deque<Peer*>& buffer) {
   // add at most n keys from a leaf to the buffer
   if (this->leaf) {
-    this->latest_access = std::chrono::steady_clock::now();
+    this->latest_access = std::chrono::system_clock::now();
     for (int i = 0; i < n && i < this->kbucket.size(); i++) {
       buffer.push_back(this->kbucket.at(i));
     }
@@ -248,8 +223,8 @@ void Router::BinaryTree::tree_all_peers(std::deque<Peer*>& buffer) {
 // add a random peer from each bucket that has not been accessed in the specified amount of time
 void Router::BinaryTree::random_per_bucket_peers_helper(std::deque<Peer*>& peer_buffer, std::chrono::seconds unaccessed_time) {
   if (this->leaf) {
-    this->latest_access = std::chrono::steady_clock::now();
-    std::chrono::seconds time_since_access = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - this->latest_access);
+    this->latest_access = std::chrono::system_clock::now();
+    std::chrono::seconds time_since_access = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - this->latest_access);
     if (time_since_access >= unaccessed_time) {
       peer_buffer.push_back(this->kbucket.at(std::rand() % this->kbucket.size()));
     }

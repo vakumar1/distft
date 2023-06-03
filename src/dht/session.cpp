@@ -8,6 +8,10 @@ Key Session::self_key() {
   return this->router->get_self_peer()->key;
 }
 
+std::string Session::self_endpoint() {
+  return this->router->get_self_peer()->endpoint;
+}
+
 void Session::startup(std::string self_endpoint, std::string init_endpoint) {
   this->dying = false;
 
@@ -27,6 +31,8 @@ void Session::startup(std::string self_endpoint, std::string init_endpoint) {
   // ping peer for correct key (and remove dummy peer from router)
   while (!this->ping(&other_peer, &other_peer));
   this->router_lock.lock();
+  Peer* dummy_peer;
+  this->router->attempt_insert_peer(other_peer.key, other_peer.endpoint, &dummy_peer);
   this->router->evict_peer(temp_key);
   this->router_lock.unlock();
 
@@ -56,7 +62,7 @@ void Session::teardown(bool republish) {
       this->router_lock.unlock();
       bool stored = false;
       for (Peer* other_peer : closest_peers) {
-        stored = stored || this->store(other_peer, chunk_key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+        stored = stored || this->store(other_peer, chunk);
       }
       if (!stored) {
         spdlog::error("{} DROPPED CHUNK (NOT ENOUGH PEERS): CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
@@ -79,7 +85,7 @@ void Session::teardown(bool republish) {
 
 // publish a new chunk of data to the DHT
 Key Session::set(const char* data, size_t size) {
-  Chunk* chunk = new Chunk(data, size, true, std::chrono::steady_clock::now() + std::chrono::seconds(CHUNK_EXPIRE_TIME));
+  Chunk* chunk = new Chunk(data, size, true, std::chrono::system_clock::now());
   Key chunk_key = chunk->key;
   this->publish(chunk);
   return chunk_key;
@@ -100,7 +106,7 @@ void Session::publish(Chunk* chunk) {
   max_dist.value.reset();
   for (int i = 0; i < KBUCKET_MAX && i < buffer.size(); i++) {
     Peer other_peer = buffer.at(i);
-    this->store(&other_peer, chunk->key, chunk->data, chunk->size, chunk->expiry_time - std::chrono::steady_clock::now());
+    this->store(&other_peer, chunk);
     max_dist = std::max(max_dist, Dist(chunk->key, other_peer.key));
   }
 
@@ -141,13 +147,18 @@ bool Session::get(Key search_key, char** data_buffer, size_t* size_buffer) {
 void Session::self_lookup(Key self_key) {
   spdlog::debug("{} SELF LOOKUP", hex_string(self_key));
   std::deque<Peer> closest_peers;
-  auto self_query_fn = [this, &self_key, &closest_peers](Peer& peer) {
-    this->find_node(&peer, self_key, closest_peers);
+  auto self_query_fn = [this, &self_key, &closest_peers]
+                        (Peer& peer, std::mutex& ctr_lock, unsigned int& status_ctr) {
+    if (this->find_node(&peer, self_key, closest_peers)) {
+      ctr_lock.lock();
+      status_ctr++;
+      ctr_lock.unlock();
+    }
     return false;
   };
   this->lookup_helper(self_key, closest_peers, self_query_fn);
 
-  // send pings to all peers
+  // send refreshes to all peers
   std::deque<Peer*> peers;
   this->router_lock.lock();
   this->router->random_per_bucket_peers(peers, std::chrono::seconds(0));
@@ -162,8 +173,13 @@ void Session::self_lookup(Key self_key) {
 void Session::node_lookup(Key node_key, std::deque<Peer>& buffer) {
   spdlog::debug("{} NODE LOOKUP", hex_string(this->self_key()));
   std::deque<Peer> closest_peers;
-  auto node_query_fn = [this, &node_key, &closest_peers](Peer& peer) {
-    this->find_node(&peer, node_key, closest_peers);
+  auto node_query_fn = [this, &node_key, &closest_peers]
+                        (Peer& peer, std::mutex& ctr_lock, unsigned int& status_ctr) {
+    if (this->find_node(&peer, node_key, closest_peers)) {
+      ctr_lock.lock();
+      status_ctr++;
+      ctr_lock.unlock();
+    }
     return false;
   };
   this->lookup_helper(node_key, closest_peers, node_query_fn);
@@ -198,8 +214,13 @@ bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_
   spdlog::debug("{} VALUE LOOKUP: CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
   std::deque<Peer> closest_peers;
   bool found_value = false;
-  auto value_query_fn = [this, &found_value, &chunk_key, &closest_peers, data_buffer, size_buffer](Peer& peer) {
-    found_value = this->find_value(&peer, chunk_key, closest_peers, data_buffer, size_buffer);
+  auto value_query_fn = [this, &found_value, &chunk_key, &closest_peers, data_buffer, size_buffer]
+                        (Peer& peer, std::mutex& ctr_lock, unsigned int& status_ctr) {
+    if (this->find_value(&peer, chunk_key, &found_value, closest_peers, data_buffer, size_buffer)) {
+      ctr_lock.lock();
+      status_ctr++;
+      ctr_lock.unlock();
+    }
     return found_value;
   };
   this->lookup_helper(chunk_key, closest_peers, value_query_fn);
@@ -209,7 +230,7 @@ bool Session::value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_
 // perform a generic lookup on a search key
 // the query function is executed on each iteration of the lookup
 // and returns true if the lookup should halt
-void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&)>& query_fn) {
+void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&, std::mutex&, unsigned int&)>& query_fn) {
   // get the current ALPHA closest keys in the router and record the min distance
   std::deque<Peer*> local_peers;
   this->router_lock.lock();
@@ -229,14 +250,24 @@ void Session::lookup_helper(Key search_key, std::deque<Peer>& closest_peers, con
   std::sort(closest_peers.begin(), closest_peers.end(), comparator);
   for (int i = 0; i < MAX_LOOKUP_ITERS; i++) {
     // asynchronously send find node RPCs to the ALPHA closest nodes
+    std::mutex ctr_lock;
+    unsigned int lookup_ctr = 0;
     int lookup_count = std::min(PEER_LOOKUP_ALPHA, static_cast<int>(closest_peers.size()));
-    for (int j = 0; j < lookup_count; j++) {
-      Peer& other_peer = closest_peers.at(j);
+
+    for (int j = 0; j < closest_peers.size(); j++) {
+      ctr_lock.lock();
+      bool done = lookup_ctr >= lookup_count;
+      ctr_lock.unlock();
+      if (done) {
+        break;
+      }
+
+      Peer& other_peer = closest_peers[j];
       if (queried.count(other_peer.key) > 0) {
         continue;
       }
 
-      bool halt = query_fn(other_peer);
+      bool halt = query_fn(other_peer, ctr_lock, lookup_ctr);
       if (halt) {
         return;
       }
