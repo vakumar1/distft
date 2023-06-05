@@ -88,9 +88,6 @@ private:
 
 
 public:
-  Session() {
-
-  }
 
   // return session's key
   Key self_key();

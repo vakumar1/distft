@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.8)
 
-project(DHT C CXX)
+project(distft_dht C CXX)
 
-# GRPC DEPENDENCY
-include(common.cmake)
+# PROTOBUF + GRPC DEPENDENCY 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/grpc.cmake)
+
+# SPDLOG DEPENDENCY
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/spdlog.cmake)
 
 # Proto file
 get_filename_component(dht_proto "./dht.proto" ABSOLUTE)
@@ -27,66 +30,43 @@ add_custom_command(
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-# dht_grpc_proto
+# dht_grpc_proto lib
 add_library(dht_grpc_proto
   ${dht_grpc_srcs}
   ${dht_grpc_hdrs}
   ${dht_proto_srcs}
   ${dht_proto_hdrs})
-target_link_libraries(dht_grpc_proto
+target_link_libraries(dht_grpc_proto PUBLIC
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-# SPDLOG DEPENDENCY
-add_subdirectory(../../dependencies/spdlog ../../../dependencies/spdlog/build)
 
-# COMPILING EXECUTABLES + LIBS
+# COMPILING DHT LIB
 set (CMAKE_CXX_FLAGS "-g")
+set (SOURCES router.cpp rpc.cpp session.cpp)
+set (HEADERS chunk.h router.h session.h)
+add_library(distft_dht ${SOURCES} ${HEADERS})
 
-# Compile library
-set (SOURCES key.cpp router.cpp rpc.cpp session.cpp)
-set (MAIN_SOURCE main.cpp)
-add_library(dht_lib ${SOURCES} ${HEADERS})
-target_link_libraries(dht_lib
+target_include_directories(distft_dht 
+PUBLIC 
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# Link dependencies
+if (NOT TARGET distft_utils)
+  set(UTILS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../utils)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils ${CMAKE_CURRENT_BINARY_DIR}/utils)
+endif()
+target_link_libraries(distft_dht 
+PUBLIC
   dht_grpc_proto
+  distft_utils
   absl::flags
   absl::flags_parse
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only
+  spdlog::spdlog $<$<BOOL:${MINGW}>:ws2_32>
 )
-
-# Compile main program
-add_executable(dht_server main.cpp)
-target_link_libraries(dht_server
-  dht_grpc_proto
-  absl::flags
-  absl::flags_parse
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only
-  dht_lib
-)
-
-# Compile client
-add_executable(dht_client test_client.cpp)
-target_link_libraries(dht_client
-  dht_grpc_proto
-  absl::flags
-  absl::flags_parse
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
-  spdlog::spdlog_header_only
-  dht_lib
-)
-
-
-# Tests
-include(CTest)
-enable_testing()
-add_subdirectory(tests ../tests/build)
-

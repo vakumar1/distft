@@ -1,5 +1,4 @@
-#ifndef KEY_H
-#define KEY_H
+#pragma once
 
 #include <string>
 #include <bitset>
@@ -33,7 +32,7 @@ struct Dist {
 
 
 //
-// Peers and Chunks
+// Peers
 //
 
 // stores peer-specific information
@@ -55,10 +54,8 @@ struct StaticDistComparator {
   StaticDistComparator(Key k) {
     this->key = k;
   }
-  bool operator()(Peer& p1, Peer& p2) {
+  bool operator () (Peer& p1, Peer& p2) {
     return Dist(key, p1.key) < Dist(key, p2.key);
   }
   Key key;
 };
-
-#endif
