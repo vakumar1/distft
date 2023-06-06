@@ -11,6 +11,27 @@ Key random_key() {
   return key;
 }
 
+Key key_from_data(const char* data, size_t size) {
+  unsigned char hash[SHA_DIGEST_LENGTH];
+  SHA1(reinterpret_cast<const unsigned char*>(data), size, hash);
+  Key key;
+  for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+    unsigned char byte = hash[i];
+    for (int j = 0; j < 8; j++) {
+      if (byte >> j & 0x1) {
+        key.set(8 * i + j);
+      } else {
+        key.reset(8 * i + j);
+      }
+    }
+  }
+  return key;
+}
+
+Key key_from_string(std::string s) {
+  return key_from_data(s.c_str(), s.length());
+}
+
 std::string hex_string(Key k) {
   std::string res;
   std::string bits = k.to_string();

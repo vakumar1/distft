@@ -1,5 +1,6 @@
 #include "router.h"
 #include "chunk.h"
+#include <utils.h>
 
 #include <grpcpp/grpcpp.h>
 #include "dht.pb.h"
@@ -43,7 +44,7 @@ private:
   void publish(Chunk* chunk);
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
-  bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
+  bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::vector<char>** data_buffer);
   void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&, std::mutex&, unsigned int&)>& query_fn);
 
   // RPC handlers
@@ -73,7 +74,7 @@ private:
   void cleanup_chunks_thread_fn();
   void refresh_peer_thread_fn();
   bool find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
-  bool find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer);
+  bool find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, std::vector<char>** data_buffer);
   bool store(Peer* peer, Chunk* chunk);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
@@ -102,9 +103,9 @@ public:
   void teardown(bool republish);
 
   // add chunk data to DHT
-  Key set(const char* data, size_t size);
+  void set(Key key, std::vector<char>* data);
 
   // get value from DHT
   // returns false if key was not found
-  bool get(Key search_key, char** data_buffer, size_t* size_buffer);
+  bool get(Key search_key, std::vector<char>** data_buffer);
 };

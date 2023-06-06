@@ -177,9 +177,9 @@ grpc::Status Session::FindValue(grpc::ServerContext* context,
   this->chunks_lock.lock();
   if (this->chunks.count(search_key) > 0) {
     Chunk* found_chunk = this->chunks[search_key];
-    const char* data = found_chunk->data;
-    response->mutable_data()->assign(data, data + found_chunk->size);
-    response->set_size(found_chunk->size);
+    const char* data = found_chunk->data->data();
+    response->mutable_data()->assign(data, data + found_chunk->data->size());
+    response->set_size(found_chunk->data->size());
     this->chunks_lock.unlock();
     response->set_found_value(true);
     return grpc::Status::OK;
@@ -234,13 +234,12 @@ grpc::Status Session::Store(grpc::ServerContext* context,
   response->set_allocated_receiver(receiver);
 
   // store chunk locally
+  Key key = Key(request->chunk_key());
   size_t size = request->size();
-  char* data = new char[size];
-  std::memcpy(data, request->data().data(), size);
   std::chrono::system_clock::time_point original_publish = 
     std::chrono::time_point<std::chrono::system_clock>(std::chrono::seconds(request->original_publish()));
-
-  Chunk* chunk = new Chunk(data, size, false, original_publish);
+  std::vector<char>* data = new std::vector<char>(request->data().data(), request->data().data() + size);
+  Chunk* chunk = new Chunk(key, data, false, original_publish);
   this->chunks_lock.lock();
   this->chunks[chunk->key] = chunk;
   this->chunks_lock.unlock();
@@ -301,7 +300,7 @@ bool Session::find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer) {
   return true;
 }
 
-bool Session::find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, char** data_buffer, size_t* size_buffer) {
+bool Session::find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, std::vector<char>** data_buffer) {
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::FindValueRequest request;
   grpc::ClientContext context;
@@ -326,9 +325,7 @@ bool Session::find_value(Peer* peer, Key& search_key, bool* found_value_buffer, 
   // copy data into data buffer if found
   if (response.found_value()) {
     size_t size = response.size();
-    *data_buffer = new char[size];
-    std::memcpy(*data_buffer, response.data().data(), size);
-    *size_buffer = size;
+    *data_buffer = new std::vector<char>(response.data().data(), response.data().data() + size);
     *found_value_buffer = true;
     return true;
   }
@@ -380,8 +377,8 @@ bool Session::store(Peer* peer, Chunk* chunk) {
   this->rpc_caller_prelims(self_peer_rpc);
   request.set_allocated_sender(self_peer_rpc);
   request.set_chunk_key(chunk->key.to_string());
-  request.mutable_data()->assign(chunk->data, chunk->data + chunk->size);
-  request.set_size(chunk->size);
+  request.mutable_data()->assign(chunk->data->data(), chunk->data->size());
+  request.set_size(chunk->data->size());
   request.set_original_publish(
     std::chrono::time_point_cast<std::chrono::seconds>(chunk->original_publish).time_since_epoch().count()
   );

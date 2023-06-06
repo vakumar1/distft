@@ -5,6 +5,8 @@
 #include <random>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <openssl/sha.h>
 
 #define KEYBITS 160
 
@@ -15,6 +17,8 @@
 // key for chunks and peers
 typedef std::bitset<KEYBITS> Key;
 Key random_key();
+Key key_from_data(const char* data, size_t size);
+Key key_from_string(std::string);
 std::string hex_string(Key k);
 
 // represents a distance between two keys

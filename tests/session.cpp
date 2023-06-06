@@ -171,11 +171,12 @@ std::function<bool()> churn_chunks_fn(unsigned int num_chunks, unsigned int num_
 //
 
 Chunk* random_chunk(size_t size) {
-  char* data_buffer = new char[size];
+  Key key = random_key();
+  std::vector<char>* data = new std::vector<char>;
   for (int i = 0; i < size; i++) {
-    data_buffer[i] = static_cast<char>(std::rand() % 0xFF);
+    data->push_back(static_cast<char>(std::rand() % 0xFF));
   }
-  return new Chunk(data_buffer, size, true, std::chrono::system_clock::now());
+  return new Chunk(key, data, true, std::chrono::system_clock::now());
 }
 
 
@@ -193,9 +194,8 @@ void create_session(Session*& session, unsigned int my_idx, unsigned int other_i
 
 void create_chunk(Session* session, Chunk*& chunk, size_t size) {
   chunk = random_chunk(size);
-  char* data_buffer = new char[size];
-  std::memcpy(data_buffer, chunk->data, size);
-  session->set(data_buffer, size);
+  std::vector<char>* data = new std::vector<char>(chunk->data->begin(), chunk->data->end());
+  session->set(chunk->key, data);
 };
 
 void wait_on_threads(std::vector<std::thread*>& threads) {
@@ -207,23 +207,22 @@ void wait_on_threads(std::vector<std::thread*>& threads) {
 }
 
 void verify_chunk(Session* s, Chunk* c, std::mutex& lock, unsigned int& ctr) {
-  char* data_buff;
-  size_t size_buff;
-  bool found = s->get(c->key, &data_buff, &size_buff);
+  std::vector<char>* data_buff;
+  bool found = s->get(c->key, &data_buff);
   if (!found) {
     spdlog::error("{} CHUNK NOT FOUND: CHUNK={}", hex_string(s->self_key()), hex_string(c->key));
     return;
   }
-  if (c->size != size_buff) {
+  if (c->data->size() != data_buff->size()) {
     spdlog::error("{} INCORRECT SIZE: CHUNK={} EXPECTED_SIZE={} ACTUAL_SIZE={}", hex_string(s->self_key()),
-                    hex_string(c->key), c->size, size_buff);
+                    hex_string(c->key), c->data->size(), data_buff->size());
     return;
   }
   bool incorrect = false;
-  for (int k = 0; k < size_buff; k++) {
-    if (c->data[k] != data_buff[k]) {
+  for (int k = 0; k < data_buff->size(); k++) {
+    if (c->data->at(k) != data_buff->at(k)) {
       spdlog::error("{} INCORRECT VALUE: CHUNK={} BYTE={} EXPECTED_VALUE={} ACTUAL_VALUE={}", hex_string(s->self_key()), 
-                    hex_string(c->key), k, static_cast<uint8_t>(c->data[k]), static_cast<uint8_t>(data_buff[k]));
+                    hex_string(c->key), k, static_cast<uint8_t>(c->data->at(k)), static_cast<uint8_t>(data_buff->at(k)));
       incorrect = true;
       return;
     }
