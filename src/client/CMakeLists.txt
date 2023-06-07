@@ -8,8 +8,9 @@ set (DISTFT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 include(${DISTFT_ROOT}/cmake/spdlog.cmake)
 
 # Compile test program
-set (SOURCES main.cpp)
-set (HEADERS )
+set (CMAKE_CXX_FLAGS "-g")
+set (SOURCES file.cpp main.cpp)
+set (HEADERS file.h)
 add_executable(distft_client ${SOURCES} ${HEADERS})
 
 # Link dependencies

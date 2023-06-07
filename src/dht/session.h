@@ -1,3 +1,5 @@
+#pragma once
+
 #include "router.h"
 #include "chunk.h"
 #include <utils.h>
