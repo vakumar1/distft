@@ -1,17 +1,20 @@
-#include "file.h"
+#include "client.h"
 
 //
 // INDEX FILE ACCESS/MUTATION
 //
 
+// index file key
 Key index_key = key_from_string(std::string("index"));
 
+// initialize the index file in the session
 bool init_index_file(Session* s) {
-  std::vector<char> dummy_data;
-  s->set(index_key, &dummy_data);
+  std::vector<char>* dummy_data = new std::vector<char>;
+  s->set(index_key, dummy_data);
   return true;
 }
 
+// add the files to the index file chunk
 bool add_files_to_index_file(Session* s, std::vector<std::string> files) {
   std::vector<char>* data_buffer;
   if (!s->get(index_key, &data_buffer)) {
@@ -25,6 +28,7 @@ bool add_files_to_index_file(Session* s, std::vector<std::string> files) {
   return true;
 }
 
+// list all files in the index file (i.e., read the contents of the index file)
 bool get_index_files(Session* s, std::vector<std::string>& files_buffer) {
   std::vector<char>* data_buffer;
   if (!s->get(index_key, &data_buffer)) {
@@ -51,6 +55,7 @@ bool get_index_files(Session* s, std::vector<std::string>& files_buffer) {
 
 const unsigned int max_chunk_size = 1048576;
 
+// write the file from local file system to session
 bool write_from_file(Session* s, std::string file) {
   std::ifstream file_stream(file, std::ios::binary);
   if (!file_stream) {
@@ -81,39 +86,43 @@ bool write_from_file(Session* s, std::string file) {
   return true;
 }
 
-bool read_in_file(Session* s, std::string file, std::vector<char>** file_data_buffer) {
-  Key metadata_key = key_from_string(file);
-  std::vector<char>* metadata_chunk;
-  if (!s->get(metadata_key, &metadata_chunk)) {
-    return false;
-  }
-
-  // read in the file keys in the metadata chunk
-  std::vector<Key> file_chunks;
-  std::string curr_key;
-  for (int i = 0; i < metadata_chunk->size(); i++) {
-    const char c = metadata_chunk->at(i);
-    if (c == '\0') {
-      if (curr_key.length() != KEYBITS) {
-        spdlog::error("{} MALFORMED METADATA FILE (INCORRECTLY SIZED CHUNK KEY): CHUNK={}", hex_string(metadata_key), curr_key);
-      } else {
-        file_chunks.push_back(Key(curr_key));
-      }
-      curr_key.clear();
-    }
-    curr_key.push_back(c);
-  }
-
-  // read in file chunks and add to end of buffer
+// read the file from session to local buffer
+bool read_in_files(Session* s, std::vector<std::string> files, std::vector<char>** file_data_buffer) {
   std::vector<char>* file_data = new std::vector<char>;
-  unsigned int pos = 0;
-  for (Key chunk : file_chunks) {
-    std::vector<char>* chunk_buffer;
-    if (!s->get(chunk, &chunk_buffer)) {
+  for (std::string file : files) {
+    Key metadata_key = key_from_string(file);
+    std::vector<char>* metadata_chunk;
+    if (!s->get(metadata_key, &metadata_chunk)) {
       return false;
     }
-    file_data->insert(file_data->end(), chunk_buffer->begin(), chunk_buffer->end());
-    delete chunk_buffer;
+
+    // read in the file keys in the metadata chunk
+    std::vector<Key> file_chunks;
+    std::string curr_key;
+    for (int i = 0; i < metadata_chunk->size(); i++) {
+      const char c = metadata_chunk->at(i);
+      if (c == '\0') {
+        if (curr_key.length() != KEYBITS) {
+          spdlog::error("{} MALFORMED METADATA FILE (INCORRECTLY SIZED CHUNK KEY): CHUNK={}", hex_string(metadata_key), curr_key);
+        } else {
+          file_chunks.push_back(Key(curr_key));
+        }
+        curr_key.clear();
+        continue;
+      }
+      curr_key.push_back(c);
+    }
+
+    // read in file chunks and add to end of buffer
+    unsigned int pos = 0;
+    for (Key chunk : file_chunks) {
+      std::vector<char>* chunk_buffer;
+      if (!s->get(chunk, &chunk_buffer)) {
+        return false;
+      }
+      file_data->insert(file_data->end(), chunk_buffer->begin(), chunk_buffer->end());
+      delete chunk_buffer;
+    }
   }
   *file_data_buffer = file_data;
   return true;

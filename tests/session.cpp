@@ -57,7 +57,6 @@ std::function<bool()> store_chunks_fn(unsigned int num_chunks, unsigned int num_
     wait_on_threads(threads);
 
     // delete chunks and sessions
-    // destroy all chunks and servers
     for (int i = 0; i < num_chunks; i++) {
       threads.push_back(new std::thread([](Chunk* c){
         delete c;
