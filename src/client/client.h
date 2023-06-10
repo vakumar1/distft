@@ -10,18 +10,22 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <chrono>
 #include <filesystem>
 
 // DAEMON
-void run_founder_session_daemon(std::vector<std::string> endpoints);
+void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints);
 bool setup_daemon(int session_id);
 void teardown_daemon(int session_id);
 bool write_cmd_to_daemon(int session_id, char cmd, char argc, std::vector<std::string> args);
-bool read_cmd_from_daemon(char& cmd, char& argc, std::vector<std::string>& args);
-bool write_error_from_daemon(char err, std::string msg);
+bool read_cmd_from_daemon(int& client_id, char& cmd, char& argc, std::vector<std::string>& args);
+bool write_error_from_daemon(int client_id, char err, std::string msg);
 bool read_error_from_daemon(int session_id, char& err, std::string& msg);
 std::string get_home_dir();
+void init_signal_handlers();
+void wait_for_read_signal();
+void read_signal_handler(int signum);
 
 // CMD
 enum CMD {

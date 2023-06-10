@@ -44,7 +44,7 @@ bool list_cmd(std::vector<Session*> sessions, std::string& msg) {
     msg.append(file);
     msg.push_back('\n');
   }
-  return false;
+  return true;
 }
 
 bool store_cmd(std::vector<Session*> sessions, std::vector<std::string> files, std::string& msg) {

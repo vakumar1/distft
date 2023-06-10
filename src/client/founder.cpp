@@ -97,6 +97,7 @@ int main(int argc, char* argv[]) {
     std::string cmd(argv[1]);
     char err;
     std::string msg;
+    init_signal_handlers();
     if (cmd == "help") {
       printf(help_cmd().c_str());
     } else if (cmd == "start") {
@@ -108,19 +109,22 @@ int main(int argc, char* argv[]) {
       for (int i = 2; i < argc; i++) {
         endpoints.push_back(std::string(argv[i]));
       }
+      pid_t client_id = getpid();
       pid_t session_id = fork();
       if (session_id < 0) {
         printf("Failed to create new daemon. Aborting. :(\n");
         return 1;
       }
       if (session_id == 0) {
-        run_founder_session_daemon(endpoints);
+        run_founder_session_daemon(client_id, endpoints);
         return 0;
       }
       if (!setup_daemon(session_id)) {
+        kill(session_id, SIGKILL);
         printf("Failed to setup infra for new session. Aborting. :(\n");
         return 1;
       }
+      kill(session_id, SIGUSR1);
       if (!read_error_from_daemon(session_id, err, msg)) {
         printf("Failed to receive result from daemon. :(\n");
         return 1;
@@ -128,8 +132,8 @@ int main(int argc, char* argv[]) {
       printf("SESSION ID: %d\n", session_id);
       if (static_cast<bool>(err)) {
         printf("Error occurred in daemon while processing command. :(\n");
-        printf(msg.c_str());
       }
+      printf(msg.c_str());
     } else if (cmd == "list") {
       if (argc < 3) {
         printf("Provide session id for a running founder client.\n");
@@ -169,8 +173,8 @@ int main(int argc, char* argv[]) {
       }
       if (static_cast<bool>(err)) {
         printf("Error occurred in daemon while processing command. :(\n");
-        printf(msg.c_str());
       }
+      printf(msg.c_str());
     } else if (cmd == "load") {
       if (argc < 5) {
         printf("Provide session id for a running founder client, at least one file to download, and a file to write to.\n");
@@ -192,8 +196,8 @@ int main(int argc, char* argv[]) {
       }
       if (static_cast<bool>(err)) {
         printf("Error occurred in daemon while processing command. :(\n");
-        printf(msg.c_str());
       }
+      printf(msg.c_str());
     } else if (cmd == "exit") {
       if (argc < 3) {
         printf("Provide session id for a running founder client.\n");
