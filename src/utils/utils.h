@@ -1,5 +1,7 @@
 #pragma once
 
+#include <mutex>
+#include <condition_variable>
 #include <string>
 #include <bitset>
 #include <random>
@@ -62,4 +64,17 @@ struct StaticDistComparator {
     return Dist(key, p1.key) < Dist(key, p2.key);
   }
   Key key;
+};
+
+
+// 
+// Session strain management
+//
+// store metadata (i.e., session system info) to drive client behavior
+// depending on if the session is strained
+struct session_metadata {
+  std::mutex meta_lock;
+  std::condition_variable dead_cv;
+  unsigned int dead_peers;
+  unsigned int dead_peers_thresh;
 };

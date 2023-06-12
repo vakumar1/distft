@@ -41,6 +41,7 @@ private:
   std::unique_ptr<grpc::Server> server;
   std::thread server_thread;
   std::deque<std::thread*> rpc_threads;
+  session_metadata* meta;
   
   // node lookup algorithms
   void publish(Chunk* chunk);
@@ -99,7 +100,7 @@ public:
   std::string self_endpoint();
 
   // startup session with self lookup
-  void startup(std::string self_endpoint, std::string init_endpoint);
+  void startup(session_metadata* parent_metadata, std::string self_endpoint, std::string init_endpoint);
 
   // teardown session (with option to forego republishing local chunks)
   void teardown(bool republish);
@@ -111,3 +112,4 @@ public:
   // returns false if key was not found
   bool get(Key search_key, std::vector<char>** data_buffer);
 };
+

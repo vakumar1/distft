@@ -487,6 +487,11 @@ void Session::update_peer(Key& peer_key, std::string endpoint) {
       this->router_lock.lock();
       this->router->evict_peer(lru_peer->key);
       this->router_lock.unlock();
+
+      // record eviction of peer for system info
+      this->meta->meta_lock.lock();
+      this->meta->dead_peers++;
+      this->meta->meta_lock.unlock();
     }
   }
 }

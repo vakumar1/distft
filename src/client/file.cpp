@@ -43,10 +43,33 @@ bool get_index_files(Session* s, std::vector<std::string>& files_buffer) {
         files_buffer.push_back(curr_file);
       }
       curr_file.clear();
+    } else {
+      curr_file.push_back(c);
     }
-    curr_file.push_back(c);
   }
   return true;
+}
+
+// return true if file already exists in session
+bool file_exists(Session* s, std::string dht_filename) {
+  std::vector<char>* data_buffer;
+  if (!s->get(index_key, &data_buffer)) {
+    return false;
+  }
+
+  std::string curr_file;
+  for (int i = 0; i < data_buffer->size(); i++) {
+    const char c = data_buffer->at(i);
+    if (c == '\0') {
+      if (curr_file == dht_filename) {
+        return true;
+      }
+      curr_file.clear();
+    } else {
+      curr_file.push_back(c);
+    }
+  }
+  return false;
 }
 
 //
@@ -56,7 +79,7 @@ bool get_index_files(Session* s, std::vector<std::string>& files_buffer) {
 const unsigned int max_chunk_size = 1048576;
 
 // write the file from local file system to session
-bool write_from_file(Session* s, std::string file) {
+bool write_from_file(Session* s, std::string file, std::string dht_filename) {
   std::ifstream file_stream(file, std::ios::binary);
   if (!file_stream) {
       return false;
@@ -75,7 +98,7 @@ bool write_from_file(Session* s, std::string file) {
   }
 
   // write all file keys to the metadata chunk
-  Key metadata_key = key_from_string(file);
+  Key metadata_key = key_from_string(dht_filename);
   std::vector<char>* metadata = new std::vector<char>;
   for (Key key : chunks) {
     std::string key_str = key.to_string();

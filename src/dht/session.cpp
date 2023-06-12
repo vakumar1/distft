@@ -12,8 +12,9 @@ std::string Session::self_endpoint() {
   return this->router->get_self_peer()->endpoint;
 }
 
-void Session::startup(std::string self_endpoint, std::string init_endpoint) {
+void Session::startup(session_metadata* parent_metadata, std::string self_endpoint, std::string init_endpoint) {
   this->dying = false;
+  this->meta = parent_metadata;
 
   // generate self's key and get the initial peer's key (temporarily create router)
   Key self_key = random_key();

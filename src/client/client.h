@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+#include <algorithm>
 #include <string>
 #include <streambuf>
 #include <fstream>
@@ -36,16 +37,28 @@ enum CMD {
   STORE = 4,
   LOAD = 5,
 };
+struct client_state {
+  bool dying;
+  std::vector<std::string> endpoints;
+  std::vector<Session*> sessions;
+  std::vector<std::thread*> background_threads;
+  std::string cmd_err;
+  std::string cmd_out;
+  session_metadata* meta;
+};
 std::string help_cmd();
-bool start_cmd(std::vector<Session*>& sessions, std::vector<std::string> endpoints, std::string& msg);
-void exit_cmd(std::vector<Session*> sessions);
-bool list_cmd(std::vector<Session*> sessions, std::string& msg);
-bool store_cmd(std::vector<Session*> sessions, std::vector<std::string> files, std::string& msg);
-bool load_cmd(std::vector<Session*> sessions, std::vector<std::string> input_files, std::string output_file, std::string& msg);
+bool bootstrap_cmd(client_state& state, std::vector<std::string> endpoints);
+bool start_background_strain_reliever_cmd(client_state& state);
+bool join_cmd(client_state& state, std::string my_endpoint, std::string ext_endpoint);
+void exit_cmd(client_state& state);
+bool list_cmd(client_state& state);
+bool store_cmd(client_state& state, std::vector<std::string> files);
+bool load_cmd(client_state& state, std::vector<std::string> input_files, std::string output_file);
 
 // FILES
 bool init_index_file(Session* s);
 bool add_files_to_index_file(Session* s, std::vector<std::string> files);
 bool get_index_files(Session* s, std::vector<std::string>& files_buffer);
-bool write_from_file(Session* s, std::string file);
+bool write_from_file(Session* s, std::string file, std::string dht_filename);
 bool read_in_files(Session* s, std::vector<std::string> files, std::vector<char>** file_data_buffer);
+bool file_exists(Session* s, std::string dht_filename);
