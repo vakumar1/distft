@@ -1,18 +1,5 @@
 #include "client.h"
 
-std::string help_cmd() {
-std::string help = 
-R"(  help: print all commands
-  start <endpoint 1> ... <endpoint n>: create a new session cluster with at least 2 endpoints (prints out the session id)
-  list <session id>: print all files
-  store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
-  load <session id> <file name 1> ... <file name n> <file path>: write the content of file name(s) to local file path
-  exit <session id>: exit the session
-  ** only include a session id if in non-interactive mode and working with a running daemon
-)";
-  return help;
-}
-
 // bootstrap a new cluster of sessions from at least 2 endpoints
 bool bootstrap_cmd(client_state& state, std::vector<std::string> endpoints) {
   state.dying = false;
@@ -37,10 +24,10 @@ bool bootstrap_cmd(client_state& state, std::vector<std::string> endpoints) {
   // init index file
   if (!init_index_file(state.sessions[std::rand() % state.sessions.size()])) {
     exit_cmd(state);
-    state.cmd_err += "Failed to initialize session index file\n";
+    state.cmd_err = "Failed to initialize session index file";
     return false;
   }
-  state.cmd_out += "Initialized sessions and index file for new cluster.\n";
+  state.cmd_out = "Initialized sessions and index file for new cluster.";
   return true;
 }
 
@@ -77,7 +64,7 @@ bool join_cmd(client_state& state, std::string my_endpoint, std::string ext_endp
   Session* s = new Session;
   state.sessions.push_back(s);
   s->startup(state.meta, my_endpoint, ext_endpoint);
-  state.cmd_out += "Joined external session successfully.\n";
+  state.cmd_out = "Joined external session successfully.";
   return true;
 }
 
@@ -85,7 +72,7 @@ bool join_cmd(client_state& state, std::string my_endpoint, std::string ext_endp
 bool list_cmd(client_state& state) {
   std::vector<std::string> index_files;
   if (!get_index_files(state.sessions[std::rand() % state.sessions.size()], index_files)) {
-    state.cmd_err += "Failed to access index file\n";
+    state.cmd_err = "Failed to access index file";
     return false;
   }
   state.cmd_out.append(std::string("INDEX\n"));
@@ -104,18 +91,23 @@ bool store_cmd(client_state& state, std::vector<std::string> files) {
     std::string dht_filename = file_path.filename().string();
     if (std::find(added_files.begin(), added_files.end(), dht_filename) != added_files.end()
         || file_exists(state.sessions[std::rand() % state.sessions.size()], dht_filename)) {
-      state.cmd_err += "File" + file + " already exists in the current session. Skipping.\n";
+      state.cmd_err += "File" + file + " already exists in the current session. Skipping.";
       continue;
     }
     if (!write_from_file(state.sessions[std::rand() % state.sessions.size()], file, dht_filename)) {
-      state.cmd_err += "File " +  file + " does not exist or read failed. Skipping.\n";
+      state.cmd_err += "File " +  file + " does not exist or read failed. Skipping.";
       continue;
     }
     added_files.push_back(dht_filename);
   }
   if (!add_files_to_index_file(state.sessions[std::rand() % state.sessions.size()], added_files)) {
-    state.cmd_err += "Failed to write to index file.\n";
+    state.cmd_err += "Failed to write to index file.";
     return false;
+  }
+  state.cmd_out = "Successfully stored the following files\n";
+  for (std::string file : added_files) {
+    state.cmd_out += file;
+    state.cmd_out.push_back('\n');
   }
   return true;
 }
@@ -124,16 +116,17 @@ bool store_cmd(client_state& state, std::vector<std::string> files) {
 bool load_cmd(client_state& state, std::vector<std::string> input_files, std::string output_file) {
   std::vector<char>* buffer;
   if (!read_in_files(state.sessions[std::rand() % state.sessions.size()], input_files, &buffer)) {
-    state.cmd_err += "Failed to read from files\n";
+    state.cmd_err = "Failed to read from files";
     return false;
   }
   std::ofstream file(output_file, std::ios::out | std::ios::binary);
   if (!file) {
-    state.cmd_err += "Failed to open output file " + output_file;
+    state.cmd_err = "Failed to open output file " + output_file;
     return false;
   }
   file.write(buffer->data(), buffer->size());
   file.close();
+  state.cmd_out = "Successfully loaded all files into output file " + output_file;
   return true;
 }
 

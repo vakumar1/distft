@@ -2,10 +2,7 @@
 
 // DAEMON MANAGEMENT
 
-// global signal counter (requires that no signals can be sent before fork in start!!)
-// int unhandled_signals = 0;
-// std::mutex ctr_lock;
-// std::condition_variable ctr_cv;
+
 
 // handle requests from client as a founder session
 void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints) {
@@ -28,21 +25,19 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
   client_state state;
   if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
     logger->info("START: failed to create new session.");
-    write_err(startup_client_id, static_cast<char>(true), state.cmd_err);
+    write_err(startup_client_id, static_cast<char>(true), state.cmd_err, state.cmd_out);
     return;
   }
   logger->info("START: successfully started new session cluster.");
-  write_err(startup_client_id, static_cast<char>(false), state.cmd_out);
+  write_err(startup_client_id, static_cast<char>(false), state.cmd_err, state.cmd_out);
   
   bool success;
   char cmd;
   char argc;
   std::vector<std::string> args;
-  std::string output;
   while (true) {
     state.cmd_err.clear();
     state.cmd_out.clear();
-    output.clear();
     int client_id;
     if (!read_cmd(client_id, cmd, argc, args)) {
       logger->error("Failed to read command from client. Skipping.\n");
@@ -55,22 +50,19 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
     } else if (cmd == LIST) {
       logger->info("LIST: logging index file contents");
       success = list_cmd(state);
-      output = success ? state.cmd_out : state.cmd_err;
     } else if (cmd == STORE) {
       logger->info("STORE: storing files");
       success = store_cmd(state, args);
-      output = success ? state.cmd_err + state.cmd_out : state.cmd_err;
     } else if (cmd == LOAD) {
       logger->info("LOAD: loading files from session");
       std::string output_file = args.back();
       args.pop_back();
       success = load_cmd(state, args, output_file);
-      output = success ? state.cmd_err + state.cmd_out : state.cmd_err;
     } else {
       logger->error("Read invalid cmd from pipe. Skipping.");
       continue;
     }
-    if (!write_err(client_id, static_cast<char>(!success), output)) {
+    if (!write_err(client_id, static_cast<char>(!success), state.cmd_err, state.cmd_out)) {
       logger->error("Failed to write error to client. Skipping.\n");
     }
   }
@@ -136,7 +128,7 @@ bool read_cmd(int& client_id, char& cmd, char& argc, std::vector<std::string>& a
 
 // write cmd error
 // called from DAEMON
-bool write_err(int client_id, char err, std::string msg) {
+bool write_err(int client_id, char err, std::string err_msg, std::string succ_msg) {
   pid_t session_id = getpid();
   std::string logger_name = std::string("logger") + std::to_string(session_id);
   auto logger = spdlog::get(logger_name);
@@ -151,12 +143,16 @@ bool write_err(int client_id, char err, std::string msg) {
     logger->error("Failed to write to client: id={}\n", session_id);
     return false;
   }
-  const char* arg_str = msg.c_str();
-  if (write(pipefd, arg_str, msg.length() + 1) < 0) {
+  const char* arg_str = err_msg.c_str();
+  if (write(pipefd, arg_str, err_msg.length() + 1) < 0) {
     logger->error("Failed to write to client: id={}\n", session_id);
     return false;
   }
-  // kill(client_id, SIGUSR1);
+  arg_str = succ_msg.c_str();
+  if (write(pipefd, arg_str, succ_msg.length() + 1) < 0) {
+    logger->error("Failed to write to client: id={}\n", session_id);
+    return false;
+  }
   close(pipefd);
   return true;
 }
@@ -202,7 +198,7 @@ bool write_cmd(int session_id, char cmd, char argc, std::vector<std::string> arg
 
 // read the cmd error
 // called from CLIENT
-bool read_err(int session_id, char& err, std::string& msg) {
+bool read_err(int session_id, char& err, std::string& err_msg, std::string& succ_msg) {
   std::string logger_name = std::string("client_logs");
   auto logger = spdlog::get(logger_name);
 
@@ -212,7 +208,6 @@ bool read_err(int session_id, char& err, std::string& msg) {
     logger->error("Pipe error reading cmd id: id={}", session_id);
     return false;
   }
-  msg.clear();
   char buff;
   while (true) {
     if (read(pipefd, &buff, 1) < 0) {
@@ -222,7 +217,18 @@ bool read_err(int session_id, char& err, std::string& msg) {
     if (buff == '\0') {
       break;
     } else {
-      msg.push_back(buff);
+      err_msg.push_back(buff);
+    }
+  }
+  while (true) {
+    if (read(pipefd, &buff, 1) < 0) {
+      logger->error("Pipe error reading cmd id: id={}", session_id);
+      return false;
+    }
+    if (buff == '\0') {
+      break;
+    } else {
+      succ_msg.push_back(buff);
     }
   }
   return true;
@@ -283,6 +289,18 @@ void remove_daemon_files(int session_id) {
 
 
 // GENERAL HELPERS
+
+std::string daemon_commands() {
+  return R"(
+  -i/--interactive: run in interactive mode
+  -h/--help: print all commands
+  start <endpoint 1> ... <endpoint n>: create a new session cluster with at least 2 endpoints (prints out the session id)
+  list <session id>: print all files
+  store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
+  load <session id> <file name 1> ... <file name n> <file path>: write the content of file name(s) to local file path
+  exit <session id>: exit the session
+)";
+}
 
 std::string get_home_dir() {
   char* home = getenv("HOME");

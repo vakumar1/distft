@@ -1,93 +1,109 @@
 #include "client.h"
 
-int interactive_loop() {
-// INTERACTIVE (LOOP) CLIENT
-  printf("Enter >= 2 accessible endpoints for master server: ");
-  std::string line;
-  std::getline(std::cin, line);
-  std::istringstream iss(line);
-  std::vector<std::string> endpoints;
-  std::string endpoint;
-  while (iss >> endpoint) {
-    endpoints.push_back(endpoint);
-  }
-  if (endpoints.size() < 2) {
-    printf("Enter >= 2 endpoints\n");
-    return 0;
-  }
-  
-  client_state state;
-  if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
-    printf("Error occurred in daemon while processing command. :(\n");
-    printf(state.cmd_err.c_str());
-    return 0;
-  }
+#define SUCCESS 0
+#define INTERNAL_ERROR 1
+#define USER_ERROR 2
 
-  // client loop
-  bool success;
-  std::string output;
-  while (true) {
-    state.cmd_err.clear();
-    state.cmd_out.clear();
-    output.clear();
-    printf("\n> ");
-    std::string line;
-    std::getline(std::cin, line);
-    std::istringstream iss(line);
-    std::vector<std::string> tokens;
-    std::string token;
-    while (iss >> token) {
-      tokens.push_back(token);
-    }
-    if (tokens.size() == 0) {
-      continue;
-    } else if (tokens[0] == "help") {
-      printf(help_cmd().c_str());
-    } else if (tokens[0] == "list") {
-      success = list_cmd(state);
-      output = success ? state.cmd_out : state.cmd_err;
-    } else if (tokens[0] == "store") {
-      if (tokens.size() < 2) {
-        printf("\nPlease provide file(s) to add.");
-        continue;
-      }
-      std::vector<std::string> files;
-      for (int i = 1; i < tokens.size(); i++) {
-        files.push_back(tokens[i]);
-      }
-      success = store_cmd(state, files);
-      output = success ? state.cmd_err + state.cmd_out : state.cmd_err;
-    } else if (tokens[0] == "load") {
-      if (tokens.size() < 3) {
-        printf("\nPlease provide file to print/file to write to.");
-        continue;
-      }
-      std::vector<std::string> files;
-      for (int i = 1; i < tokens.size() - 1; i++) {
-        files.push_back(tokens[i]);
-      }
-      std::string output_file = tokens.back();
-      success = load_cmd(state, files, output_file);
-      output = success ? state.cmd_err + state.cmd_out : state.cmd_err;
-    } else if (tokens[0] == "exit") {
-      exit_cmd(state);
-      exit(0);
-    } else {
-      printf("\nEnter a valid command. Enter `help` for all commands.");
-      continue;
-    }
-    if (!success) {
-      printf("Error occurred in daemon while processing command. :(\n");
-    }
-    printf(output.c_str());
+// daemon command handlers
+void print_result(bool err, std::string err_msg, std::string succ_msg) {
+  if (static_cast<bool>(err)) {
+    std::cout << "Error occurred in daemon while processing command. :(" << std::endl;
   }
+  if (!err_msg.empty()) {
+    std::cout << err_msg.c_str() << std::endl;
+  }
+  if (!succ_msg.empty()) {
+    std::cout << succ_msg.c_str() << std::endl;
+  }
+}
+
+int handle_start(std::vector<std::string> endpoints) {
+  pid_t client_id = getpid();
+  pid_t session_id = fork();
+  if (session_id < 0) {
+    std::cout << "Failed to create new daemon. Aborting. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  if (session_id == 0) {
+    setup_daemon();
+    run_founder_session_daemon(client_id, endpoints);
+    return SUCCESS;
+  }
+  add_daemon_files(session_id);
+  char err;
+  std::string err_msg;
+  std::string succ_msg;
+  if (!read_err(session_id, err, err_msg, succ_msg)) {
+    std::cout << "Failed to receive result from daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  std::cout << "SESSION ID: " << session_id << std::endl;
+  print_result(static_cast<bool>(err), err_msg, succ_msg);
+  return SUCCESS;
+}
+
+int handle_exit(int session_id) {
+  if (!write_cmd(session_id, EXIT, 0, std::vector<std::string>())) {
+    std::cout << "Failed to send exit cmd to daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  remove_daemon_files(session_id);
+  return SUCCESS;
+}
+
+int handle_list(int session_id) {
+  if (!write_cmd(session_id, LIST, 0, std::vector<std::string>())) {
+    std::cout << "Failed to send list cmd to daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  char err;
+  std::string err_msg;
+  std::string succ_msg;
+  if (!read_err(session_id, err, err_msg, succ_msg)) {
+    std::cout << "Failed to receive result from daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  print_result(static_cast<bool>(err), err_msg, succ_msg);
+  return SUCCESS;
+}
+
+int handle_store(int session_id, int file_cnt, std::vector<std::string> files) {
+  if (!write_cmd(session_id, STORE, file_cnt, files)) {
+    std::cout << "Failed to send store cmd to daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  char err;
+  std::string err_msg;
+  std::string succ_msg;
+  if (!read_err(session_id, err, err_msg, succ_msg)) {
+    std::cout << "Failed to receive result from daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  print_result(static_cast<bool>(err), err_msg, succ_msg);
+  return SUCCESS;
+}
+
+int handle_load(int session_id, int file_cnt, std::vector<std::string> files) {
+  if (!write_cmd(session_id, LOAD, file_cnt, files)) {
+    std::cout << "Failed to send load cmd to daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  char err;
+  std::string err_msg;
+  std::string succ_msg;
+  if (!read_err(session_id, err, err_msg, succ_msg)) {
+    std::cout << "Failed to receive result from daemon. :(" << std::endl;
+    return INTERNAL_ERROR;
+  }
+  print_result(static_cast<bool>(err), err_msg, succ_msg);
+  return SUCCESS;
 }
 
 int main(int argc, char* argv[]) {
   // parse arguments for flags
   if (argc < 2) {
-    printf("Provide arg(s). Enter `founder help` for all commands.\n");
-    return 0;
+    std::cout << "Provide arg(s). Enter `--help` for all commands." << std::endl;
+    return USER_ERROR;
   }
   bool interactive = false;
   bool help = false;
@@ -101,19 +117,28 @@ int main(int argc, char* argv[]) {
     }
   }
   if (help) {
-    printf(help_cmd().c_str());
-    return 0;
+    std::string help = 
+    R"(help: print all commands
+      start <endpoint 1> ... <endpoint n>: create a new session cluster with at least 2 endpoints (prints out the session id)
+      list <session id>: print all files
+      store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
+      load <session id> <file name 1> ... <file name n> <file path>: write the content of file name(s) to local file path
+      exit <session id>: exit the session
+      ** only include a session id if in non-interactive mode and working with a running daemon
+    )";
+    std::cout << daemon_commands().c_str() << std::endl;
+    return SUCCESS;
   }
   if (interactive) {
-    interactive_loop();
-    return 0;
+    run_founder_session_interactive();
+    return SUCCESS;
   }
 
   // DAEMON-BASED CLIENT
   // setup client and logger
   if (!setup_client()) {
-    printf("Failed to setup client directory in ~.\n");
-    return 1;
+    std::cout << "Failed to setup client directory in ~."  << std::endl;
+    return INTERNAL_ERROR;
   }
 
   std::string cmd(argv[1]);
@@ -121,111 +146,77 @@ int main(int argc, char* argv[]) {
   std::string msg;
   if (cmd == "start") {
     if (argc < 4) {
-      printf("Provide at least 2 accessible endpoints for the founder client.\n");
-      return 0;
+      std::cout << "Provide at least 2 accessible endpoints for the founder client." << std::endl;
+      return USER_ERROR;
     }
     std::vector<std::string> endpoints;
     for (int i = 2; i < argc; i++) {
       endpoints.push_back(std::string(argv[i]));
     }
-    pid_t client_id = getpid();
-    pid_t session_id = fork();
-    if (session_id < 0) {
-      printf("Failed to create new daemon. Aborting. :(\n");
-      return 1;
-    }
-    if (session_id == 0) {
-      setup_daemon();
-      run_founder_session_daemon(client_id, endpoints);
-      return 0;
-    }
-    add_daemon_files(session_id);
-    if (!read_err(session_id, err, msg)) {
-      printf("Failed to receive result from daemon. :(\n");
-      return 1;
-    }
-    printf("SESSION ID: %d\n", session_id);
-    if (static_cast<bool>(err)) {
-      printf("Error occurred in daemon while processing command. :(\n");
-    }
-    printf(msg.c_str());
-  } else if (cmd == "list") {
-    if (argc < 3) {
-      printf("Provide session id for a running founder client.\n");
-      return 0;
-    }
-    int session_id = std::stoi(argv[2]);
-    if (!write_cmd(session_id, LIST, 0, std::vector<std::string>())) {
-      printf("Failed to send list cmd to daemon. :(\n");
-      return 1;
-    }
-    if (!read_err(session_id, err, msg)) {
-      printf("Failed to receive result from daemon. :(\n");
-      return 1;
-    }
-    if (static_cast<bool>(err)) {
-      printf("Error occurred in daemon while processing command. :(\n");
-    }
-    printf(msg.c_str());
-  } else if (cmd == "store") {
-    if (argc < 4) {
-      printf("Provide session id for a running founder client and at least one file.\n");
-      return 0;
-    }
-    int session_id = std::stoi(argv[2]);
-    char file_cnt = static_cast<char>(argc - 3);
-    std::vector<std::string> files;
-    for (int i = 3; i < argc; i++) {
-      files.push_back(std::string(argv[i]));
-    }
-    if (!write_cmd(session_id, STORE, file_cnt, files)) {
-      printf("Failed to send store cmd to daemon. :(\n");
-      return 1;
-    }
-    if (!read_err(session_id, err, msg)) {
-      printf("Failed to receive result from daemon. :(\n");
-      return 1;
-    }
-    if (static_cast<bool>(err)) {
-      printf("Error occurred in daemon while processing command. :(\n");
-    }
-    printf(msg.c_str());
-  } else if (cmd == "load") {
-    if (argc < 5) {
-      printf("Provide session id for a running founder client, at least one file to download, and a file to write to.\n");
-      return 0;
-    }
-    int session_id = std::stoi(argv[2]);
-    char file_cnt = static_cast<char>(argc - 3);
-    std::vector<std::string> files;
-    for (int i = 3; i < argc; i++) {
-      files.push_back(std::string(argv[i]));
-    }
-    if (!write_cmd(session_id, LOAD, file_cnt, files)) {
-      printf("Failed to send load cmd to daemon. :(\n");
-      return 1;
-    }
-    if (!read_err(session_id, err, msg)) {
-      printf("Failed to receive result from daemon. :(\n");
-      return 1;
-    }
-    if (static_cast<bool>(err)) {
-      printf("Error occurred in daemon while processing command. :(\n");
-    }
-    printf(msg.c_str());
+    return handle_start(endpoints);
   } else if (cmd == "exit") {
     if (argc < 3) {
-      printf("Provide session id for a running founder client.\n");
-      return 0;
+      std::cout << "Provide session id for a running founder client." << std::endl;
+      return USER_ERROR;
     }
-    int session_id = std::stoi(argv[2]);
-    if (!write_cmd(session_id, EXIT, 0, std::vector<std::string>())) {
-      printf("Failed to send exit cmd to daemon. :(\n");
-      return 1;
+    std::string session_id_arg = argv[2];
+    if (!std::all_of(session_id_arg.begin(), session_id_arg.end(), [](unsigned char c){ return std::isdigit(c); })
+        || !std::filesystem::exists(CMD_FILE(std::stoi(session_id_arg)))) {
+      std::cout << "Session ID not found. :O" << std::endl;
+      return USER_ERROR;
     }
-    remove_daemon_files(session_id);
-  } else {
-    printf("Command not found. Enter `founder help` for all commands.\n");
+    int session_id = std::stoi(session_id_arg);
+    return handle_exit(session_id);
+  } else if (cmd == "list") {
+    if (argc < 3) {
+      std::cout << "Provide session id for a running founder client." << std::endl;
+      return USER_ERROR;
+    }
+    std::string session_id_arg = argv[2];
+    if (!std::all_of(session_id_arg.begin(), session_id_arg.end(), [](unsigned char c){ return std::isdigit(c); })
+        || !std::filesystem::exists(CMD_FILE(std::stoi(session_id_arg)))) {
+      std::cout << "Session ID not found. :O" << std::endl;
+      return USER_ERROR;
+    }
+    int session_id = std::stoi(session_id_arg);
+    return handle_list(session_id);
+  } else if (cmd == "store") {
+    if (argc < 4) {
+      std::cout << "Provide session id for a running founder client and at least one file." << std::endl;
+      return USER_ERROR;
+    }
+    std::string session_id_arg = argv[2];
+    if (!std::all_of(session_id_arg.begin(), session_id_arg.end(), [](unsigned char c){ return std::isdigit(c); })
+        || !std::filesystem::exists(CMD_FILE(std::stoi(session_id_arg)))) {
+      std::cout << "Session ID not found. :O" << std::endl;
+      return USER_ERROR;
+    }
+    int session_id = std::stoi(session_id_arg);
+    char file_cnt = static_cast<char>(argc - 3);
+    std::vector<std::string> files;
+    for (int i = 3; i < argc; i++) {
+      files.push_back(std::string(argv[i]));
+    }
+    return handle_store(session_id, file_cnt, files);
+  } else if (cmd == "load") {
+    if (argc < 5) {
+      std::cout << "Provide session id for a running founder client, at least one file to download, and a file to write to." << std::endl;
+      return USER_ERROR;
+    }
+    std::string session_id_arg = argv[2];
+    if (!std::all_of(session_id_arg.begin(), session_id_arg.end(), [](unsigned char c){ return std::isdigit(c); })
+        || !std::filesystem::exists(CMD_FILE(std::stoi(session_id_arg)))) {
+      std::cout << "Session ID not found. :O" << std::endl;
+      return USER_ERROR;
+    }
+    int session_id = std::stoi(session_id_arg);
+    char file_cnt = static_cast<char>(argc - 3);
+    std::vector<std::string> files;
+    for (int i = 3; i < argc; i++) {
+      files.push_back(std::string(argv[i]));
+    }
+    return handle_load(session_id, file_cnt, files);
   }
-  return 0;
+  std::cout << "Command not found. Enter `--help` for all commands." << std::endl;
+  return SUCCESS;
 }

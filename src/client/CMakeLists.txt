@@ -9,7 +9,7 @@ include(${DISTFT_ROOT}/cmake/spdlog.cmake)
 
 # Compile test program
 set (CMAKE_CXX_FLAGS "-g")
-set (SOURCES file.cpp cmd.cpp daemon.cpp founder.cpp)
+set (SOURCES file.cpp cmd.cpp daemon.cpp interactive.cpp founder.cpp)
 set (HEADERS client.h)
 add_executable(distft_founder ${SOURCES} ${HEADERS})
 
