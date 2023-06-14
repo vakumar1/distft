@@ -16,17 +16,21 @@
 #include <filesystem>
 
 // DAEMON
+#define SESSION_DIR(session_id) (std::filesystem::path("daemons") / std::to_string(session_id))
+#define LOGS_FILE(session_id) (SESSION_DIR(session_id) / "logs")
+#define CMD_FILE(session_id) (SESSION_DIR(session_id) / "cmd")
+#define ERR_FILE(session_id) (SESSION_DIR(session_id) / "err")
+
+void setup_daemon();
 void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints);
-bool setup_daemon(int session_id);
-void teardown_daemon(int session_id);
-bool write_cmd_to_daemon(int session_id, char cmd, char argc, std::vector<std::string> args);
-bool read_cmd_from_daemon(int& client_id, char& cmd, char& argc, std::vector<std::string>& args);
-bool write_error_from_daemon(int client_id, char err, std::string msg);
-bool read_error_from_daemon(int session_id, char& err, std::string& msg);
+bool read_cmd(int& client_id, char& cmd, char& argc, std::vector<std::string>& args);
+bool write_err(int client_id, char err, std::string msg);
+bool write_cmd(int session_id, char cmd, char argc, std::vector<std::string> args);
+bool read_err(int session_id, char& err, std::string& msg);
+bool setup_client();
+bool add_daemon_files(int session_id);
+void remove_daemon_files(int session_id);
 std::string get_home_dir();
-void init_signal_handlers();
-void wait_for_read_signal();
-void read_signal_handler(int signum);
 
 // CMD
 enum CMD {

@@ -71,7 +71,7 @@ int interactive_loop() {
       output = success ? state.cmd_err + state.cmd_out : state.cmd_err;
     } else if (tokens[0] == "exit") {
       exit_cmd(state);
-      return 0;
+      exit(0);
     } else {
       printf("\nEnter a valid command. Enter `help` for all commands.");
       continue;
@@ -84,6 +84,7 @@ int interactive_loop() {
 }
 
 int main(int argc, char* argv[]) {
+  // parse arguments for flags
   if (argc < 2) {
     printf("Provide arg(s). Enter `founder help` for all commands.\n");
     return 0;
@@ -109,10 +110,15 @@ int main(int argc, char* argv[]) {
   }
 
   // DAEMON-BASED CLIENT
+  // setup client and logger
+  if (!setup_client()) {
+    printf("Failed to setup client directory in ~.\n");
+    return 1;
+  }
+
   std::string cmd(argv[1]);
   char err;
   std::string msg;
-  init_signal_handlers();
   if (cmd == "start") {
     if (argc < 4) {
       printf("Provide at least 2 accessible endpoints for the founder client.\n");
@@ -129,16 +135,12 @@ int main(int argc, char* argv[]) {
       return 1;
     }
     if (session_id == 0) {
+      setup_daemon();
       run_founder_session_daemon(client_id, endpoints);
       return 0;
     }
-    if (!setup_daemon(session_id)) {
-      kill(session_id, SIGKILL);
-      printf("Failed to setup infra for new session. Aborting. :(\n");
-      return 1;
-    }
-    kill(session_id, SIGUSR1);
-    if (!read_error_from_daemon(session_id, err, msg)) {
+    add_daemon_files(session_id);
+    if (!read_err(session_id, err, msg)) {
       printf("Failed to receive result from daemon. :(\n");
       return 1;
     }
@@ -153,11 +155,11 @@ int main(int argc, char* argv[]) {
       return 0;
     }
     int session_id = std::stoi(argv[2]);
-    if (!write_cmd_to_daemon(session_id, LIST, 0, std::vector<std::string>())) {
+    if (!write_cmd(session_id, LIST, 0, std::vector<std::string>())) {
       printf("Failed to send list cmd to daemon. :(\n");
       return 1;
     }
-    if (!read_error_from_daemon(session_id, err, msg)) {
+    if (!read_err(session_id, err, msg)) {
       printf("Failed to receive result from daemon. :(\n");
       return 1;
     }
@@ -176,11 +178,11 @@ int main(int argc, char* argv[]) {
     for (int i = 3; i < argc; i++) {
       files.push_back(std::string(argv[i]));
     }
-    if (!write_cmd_to_daemon(session_id, STORE, file_cnt, files)) {
+    if (!write_cmd(session_id, STORE, file_cnt, files)) {
       printf("Failed to send store cmd to daemon. :(\n");
       return 1;
     }
-    if (!read_error_from_daemon(session_id, err, msg)) {
+    if (!read_err(session_id, err, msg)) {
       printf("Failed to receive result from daemon. :(\n");
       return 1;
     }
@@ -199,11 +201,11 @@ int main(int argc, char* argv[]) {
     for (int i = 3; i < argc; i++) {
       files.push_back(std::string(argv[i]));
     }
-    if (!write_cmd_to_daemon(session_id, LOAD, file_cnt, files)) {
+    if (!write_cmd(session_id, LOAD, file_cnt, files)) {
       printf("Failed to send load cmd to daemon. :(\n");
       return 1;
     }
-    if (!read_error_from_daemon(session_id, err, msg)) {
+    if (!read_err(session_id, err, msg)) {
       printf("Failed to receive result from daemon. :(\n");
       return 1;
     }
@@ -217,11 +219,11 @@ int main(int argc, char* argv[]) {
       return 0;
     }
     int session_id = std::stoi(argv[2]);
-    if (!write_cmd_to_daemon(session_id, EXIT, 0, std::vector<std::string>())) {
+    if (!write_cmd(session_id, EXIT, 0, std::vector<std::string>())) {
       printf("Failed to send exit cmd to daemon. :(\n");
       return 1;
     }
-    teardown_daemon(session_id);
+    remove_daemon_files(session_id);
   } else {
     printf("Command not found. Enter `founder help` for all commands.\n");
   }

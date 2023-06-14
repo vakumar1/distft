@@ -3,37 +3,36 @@
 // DAEMON MANAGEMENT
 
 // global signal counter (requires that no signals can be sent before fork in start!!)
-int unhandled_signals = 0;
-std::mutex ctr_lock;
-std::condition_variable ctr_cv;
+// int unhandled_signals = 0;
+// std::mutex ctr_lock;
+// std::condition_variable ctr_cv;
 
 // handle requests from client as a founder session
 void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints) {
   int session_id = getpid();
-  std::string logger_name = std::string("logger") + std::to_string(session_id);
   
-  // wait until log, cmd, and error pipes exist
-  std::string home_dir = get_home_dir();  
-  std::string cmd_pipe = home_dir + "/.distft/cmd/" + std::to_string(session_id);
-  std::string err_pipe = home_dir + "/.distft/err/" + std::to_string(session_id);
-  std::string log_file = home_dir + "/.distft/logs/" + std::to_string(session_id);
-  wait_for_read_signal();
-  if (!(std::filesystem::exists(cmd_pipe) &&
-      std::filesystem::exists(err_pipe) &&
-      std::filesystem::exists(log_file))) {
-    return;
+  // wait until log, cmd, and error pipes exist (wait for max of 1 min.)
+  for (int i = 0; i < 60; i++) {
+    if (std::filesystem::exists(LOGS_FILE(session_id)) &&
+        std::filesystem::exists(CMD_FILE(session_id)) &&
+        std::filesystem::exists(ERR_FILE(session_id))) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
-  auto logger = spdlog::basic_logger_mt(logger_name, log_file);
+  std::string logger_name = std::string("logger") + std::to_string(session_id);
+  auto logger = spdlog::basic_logger_mt(logger_name, LOGS_FILE(session_id));
   logger->flush_on(spdlog::level::err);
-  logger->info("START: successfully started new session cluster.");
 
   // start the session cluster
   client_state state;
   if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
-    write_error_from_daemon(startup_client_id, static_cast<char>(true), state.cmd_err);
+    logger->info("START: failed to create new session.");
+    write_err(startup_client_id, static_cast<char>(true), state.cmd_err);
     return;
   }
-  write_error_from_daemon(startup_client_id, static_cast<char>(false), state.cmd_out);
+  logger->info("START: successfully started new session cluster.");
+  write_err(startup_client_id, static_cast<char>(false), state.cmd_out);
   
   bool success;
   char cmd;
@@ -45,7 +44,7 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
     state.cmd_out.clear();
     output.clear();
     int client_id;
-    if (!read_cmd_from_daemon(client_id, cmd, argc, args)) {
+    if (!read_cmd(client_id, cmd, argc, args)) {
       logger->error("Failed to read command from client. Skipping.\n");
       continue;
     }
@@ -71,94 +70,36 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
       logger->error("Read invalid cmd from pipe. Skipping.");
       continue;
     }
-    if (!write_error_from_daemon(client_id, static_cast<char>(!success), output)) {
+    if (!write_err(client_id, static_cast<char>(!success), output)) {
       logger->error("Failed to write error to client. Skipping.\n");
     }
   }
 }
 
-// create log/comms files (returns true if logs and pipe set up correctly)
-bool setup_daemon(int session_id) {
-  std::string home_dir = get_home_dir();
-  std::string cmd_pipe = home_dir + "/.distft/cmd/" + std::to_string(session_id);
-  std::string err_pipe = home_dir + "/.distft/err/" + std::to_string(session_id);
-  std::string logs_file = home_dir + "/.distft/logs/" + std::to_string(session_id);
-  if (creat(logs_file.c_str(), 0666) < 0) {
-    return false;
+// setup the daemon
+void setup_daemon() {
+  setsid() < 0;
+
+  // close all files and redirect stdin/stdout to /dev/null
+  for (int i = getdtablesize(); i >= 0; i--) {
+    close(i);
   }
-  if (mkfifo(cmd_pipe.c_str(), 0666) < 0) {
-    return false;
-  }
-  if (mkfifo(err_pipe.c_str(), 0666) < 0) {
-    return false;
-  }
-  return true;
+	int i = open("/dev/null", O_RDWR);
+  dup2(STDIN_FILENO, i);
+  dup2(STDOUT_FILENO, i);
 }
 
-// delete log/comms files and exit daemon
-void teardown_daemon(int session_id) {
-  std::string home_dir = get_home_dir();
-  std::string logs_file = home_dir + "/.distft/logs/" + std::to_string(session_id);
-  remove(logs_file.c_str());
-  std::string cmd_pipe = home_dir + "/.distft/cmd/" + std::to_string(session_id);
-  unlink(cmd_pipe.c_str());
-  std::string err_pipe = home_dir + "/.distft/err/" + std::to_string(session_id);
-  unlink(err_pipe.c_str());
-  exit(0);
-}
-
-// DAEMON COMMS
-
-// write client pid + cmd + arguments to pipe corresponding to the given session
-bool write_cmd_to_daemon(int session_id, char cmd, char argc, std::vector<std::string> args) {
-  std::string home_dir = get_home_dir();
-  std::string cmd_pipe = home_dir + "/.distft/cmd/" + std::to_string(session_id);
-  std::string logs_file = home_dir + "/.distft/logs/" + std::to_string(session_id);
-  std::string logger_name = std::string("logger") + std::to_string(session_id);
-  auto logger = spdlog::basic_logger_mt(logger_name, logs_file);
-  logger->flush_on(spdlog::level::err);
-  
-  int pipefd = open(cmd_pipe.c_str(), O_WRONLY);
-  if (pipefd < 0) {
-    logger->error("Failed to find running process: id={}\n", session_id);
-    return false;
-  }
-  pid_t client_id = getpid();
-  char* client_id_arr = reinterpret_cast<char*>(&client_id);
-  if (!write(pipefd, client_id_arr, sizeof(pid_t))) {
-    logger->error("Failed to write to daemon: id={}\n", session_id);
-    return false;
-  }
-  if (write(pipefd, &cmd, 1) < 0) {
-    logger->error("Failed to write to daemon: id={}\n", session_id);
-    return false;
-  }
-  if (write(pipefd, &argc, 1) < 0) {
-    logger->error("Failed to write to daemon: id={}\n", session_id);
-    return false;
-  }
-  for (std::string arg : args) {
-    const char* arg_str = arg.c_str();
-    if (write(pipefd, arg_str, arg.length() + 1) < 0) {
-      logger->error("Failed to write to daemon: id={}\n", session_id);
-      return false;
-    }
-  }
-  kill(session_id, SIGUSR1);
-  close(pipefd);
-  return true;
-}
+// DAEMON-SIDE COMMS HELPERS
 
 // read cmd + arguments from the pipe in the daemon
-bool read_cmd_from_daemon(int& client_id, char& cmd, char& argc, std::vector<std::string>& args) {
+// called from DAEMON
+bool read_cmd(int& client_id, char& cmd, char& argc, std::vector<std::string>& args) {
   pid_t session_id = getpid();
-  std::string home_dir = get_home_dir();
-  std::string cmd_pipe = home_dir + "/.distft/cmd/" + std::to_string(session_id);
   std::string logger_name = std::string("logger") + std::to_string(session_id);
   auto logger = spdlog::get(logger_name);
 
-  int pipefd = open(cmd_pipe.c_str(), O_RDONLY);
-  wait_for_read_signal();
+  // block until pipe is ready to read cmd from a client
+  int pipefd = open(CMD_FILE(session_id).c_str(), O_RDONLY);
   if (read(pipefd, &client_id, sizeof(pid_t)) < 0) {
     logger->error("Pipe error reading cmd id: id={}", session_id);
     return false;
@@ -189,17 +130,19 @@ bool read_cmd_from_daemon(int& client_id, char& cmd, char& argc, std::vector<std
       curr_arg.push_back(buff);
     }
   }
+  close(pipefd);
   return true;
 }
 
-bool write_error_from_daemon(int client_id, char err, std::string msg) {
+// write cmd error
+// called from DAEMON
+bool write_err(int client_id, char err, std::string msg) {
   pid_t session_id = getpid();
-  std::string home_dir = get_home_dir();
-  std::string err_pipe = home_dir + "/.distft/err/" + std::to_string(session_id);
   std::string logger_name = std::string("logger") + std::to_string(session_id);
   auto logger = spdlog::get(logger_name);
 
-  int pipefd = open(err_pipe.c_str(), O_WRONLY);
+  // write error to client (or just return if client isn't ready to read)
+  int pipefd = open(ERR_FILE(session_id).c_str(), O_WRONLY | O_NONBLOCK);
   if (pipefd < 0) {
     logger->error("Failed to open pipe: id={}\n", session_id);
     return false;
@@ -213,20 +156,58 @@ bool write_error_from_daemon(int client_id, char err, std::string msg) {
     logger->error("Failed to write to client: id={}\n", session_id);
     return false;
   }
-  kill(client_id, SIGUSR1);
+  // kill(client_id, SIGUSR1);
   close(pipefd);
   return true;
 }
 
-bool read_error_from_daemon(int session_id, char& err, std::string& msg) {
-  std::string home_dir = get_home_dir();
-  std::string err_pipe = home_dir + "/.distft/err/" + std::to_string(session_id);
-  std::string logs_file = home_dir + "/.distft/logs/" + std::to_string(session_id);
-  std::string logger_name = std::string("logger") + std::to_string(session_id);
+// CLIENT-SIDE COMMS HELPERS
+
+// write client pid + cmd + arguments to pipe corresponding to the given session
+// called from CLIENT
+bool write_cmd(int session_id, char cmd, char argc, std::vector<std::string> args) {
+  std::string logger_name = std::string("client_logs");
+  auto logger = spdlog::get(logger_name);
+  
+  // open pipe and block until the daemon is ready to receive cmd
+  int pipefd = open(CMD_FILE(session_id).c_str(), O_WRONLY);
+  if (pipefd < 0) {
+    logger->error("Failed to find running process: id={}\n", session_id);
+    return false;
+  }
+  pid_t client_id = getpid();
+  char* client_id_arr = reinterpret_cast<char*>(&client_id);
+  if (!write(pipefd, client_id_arr, sizeof(pid_t))) {
+    logger->error("Failed to write to daemon: id={}\n", session_id);
+    return false;
+  }
+  if (write(pipefd, &cmd, 1) < 0) {
+    logger->error("Failed to write to daemon: id={}\n", session_id);
+    return false;
+  }
+  if (write(pipefd, &argc, 1) < 0) {
+    logger->error("Failed to write to daemon: id={}\n", session_id);
+    return false;
+  }
+  for (std::string arg : args) {
+    const char* arg_str = arg.c_str();
+    if (write(pipefd, arg_str, arg.length() + 1) < 0) {
+      logger->error("Failed to write to daemon: id={}\n", session_id);
+      return false;
+    }
+  }
+  close(pipefd);
+  return true;
+}
+
+// read the cmd error
+// called from CLIENT
+bool read_err(int session_id, char& err, std::string& msg) {
+  std::string logger_name = std::string("client_logs");
   auto logger = spdlog::get(logger_name);
 
-  int pipefd = open(err_pipe.c_str(), O_RDONLY);
-  wait_for_read_signal();
+  // read error back from daemon (blocks until daemon is ready to write)
+  int pipefd = open(ERR_FILE(session_id).c_str(), O_RDONLY);
   if (read(pipefd, &err, 1) < 0) {
     logger->error("Pipe error reading cmd id: id={}", session_id);
     return false;
@@ -247,8 +228,61 @@ bool read_error_from_daemon(int session_id, char& err, std::string& msg) {
   return true;
 }
 
+// CLIENT-SIDE FILE MANAGEMENT
 
-// HELPERS
+// setup the client directory at ~/.distft and chdir to client directory
+bool setup_client() {
+  std::filesystem::path client_dir = std::filesystem::path(get_home_dir()) / ".distft";
+  if (!std::filesystem::exists(client_dir)) {
+    if (!std::filesystem::create_directory(client_dir)) {
+      return false;
+    }
+  }
+  std::filesystem::path daemon_dir = client_dir / "daemons";
+  if (!std::filesystem::exists(daemon_dir)) {
+    if (!std::filesystem::create_directory(daemon_dir)) {
+      return false;
+    }
+  }
+  std::filesystem::path client_logs = client_dir / "client_logs";
+  if (!std::filesystem::exists(client_logs)) {
+    std::ofstream { client_logs };
+  }
+  std::filesystem::current_path(client_dir);
+  std::string logger_name = std::string("client_logger");
+  auto logger = spdlog::basic_logger_mt(logger_name, "client_logs");
+  logger->flush_on(spdlog::level::err);
+  return true;
+}
+
+
+// add local files for daemon to log/pipe
+bool add_daemon_files(int session_id) {
+  // create session directory and log/pipe files
+  if (!std::filesystem::create_directory(SESSION_DIR(session_id))) {
+    return false;
+  }
+  std::ofstream { LOGS_FILE(session_id) };
+  if (mkfifo(CMD_FILE(session_id).c_str(), 0666) < 0) {
+    return false;
+  }
+  if (mkfifo(ERR_FILE(session_id).c_str(), 0666) < 0) {
+    return false;
+  }
+  return true;
+}
+
+// remove daemon-specific local files
+void remove_daemon_files(int session_id) {
+  std::filesystem::remove(LOGS_FILE(session_id));
+  unlink(CMD_FILE(session_id).c_str());
+  unlink(ERR_FILE(session_id).c_str());
+  std::filesystem::remove(SESSION_DIR(session_id));
+}
+
+
+
+// GENERAL HELPERS
 
 std::string get_home_dir() {
   char* home = getenv("HOME");
@@ -256,26 +290,4 @@ std::string get_home_dir() {
     home = strdup("/tmp/");
   }
   return std::string(home);
-}
-
-void init_signal_handlers() {
-  struct sigaction act = { 0 };
-  act.sa_handler = &read_signal_handler;
-  sigaction(SIGUSR1, &act, NULL);
-}
-
-void wait_for_read_signal() {
-  std::unique_lock<std::mutex> uq_ctr_lock(ctr_lock);
-  while (unhandled_signals == 0) {
-    ctr_cv.wait(uq_ctr_lock);
-  }
-  unhandled_signals--;
-  uq_ctr_lock.unlock();
-}
-
-void read_signal_handler(int signum) {
-  std::unique_lock<std::mutex> uq_ctr_lock(ctr_lock);
-  unhandled_signals++;
-  ctr_cv.notify_all();
-  uq_ctr_lock.unlock();
 }
