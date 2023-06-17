@@ -1,4 +1,6 @@
-#include "client.h"
+#include "file.h"
+
+#include <utils.h>
 
 //
 // INDEX FILE ACCESS/MUTATION
@@ -10,7 +12,7 @@ Key index_key = key_from_string(std::string("index"));
 // initialize the index file in the session
 bool init_index_file(Session* s) {
   std::vector<char>* dummy_data = new std::vector<char>;
-  s->set(index_key, dummy_data);
+  s->set(index_key, dummy_data, true);
   return true;
 }
 
@@ -24,7 +26,7 @@ bool add_files_to_index_file(Session* s, std::vector<std::string> files) {
     data_buffer->insert(data_buffer->end(), file.begin(), file.end());
     data_buffer->push_back('\0');
   }
-  s->set(index_key, data_buffer);
+  s->set(index_key, data_buffer, true);
   return true;
 }
 
@@ -93,7 +95,7 @@ bool write_from_file(Session* s, std::string file, std::string dht_filename) {
     std::size_t bytes_read = static_cast<std::size_t>(file_stream.gcount());
     std::vector<char>* data = new std::vector<char>(buffer.begin(), buffer.begin() + bytes_read);
     Key key = key_from_data(data->data(), data->size());
-    s->set(key, data);
+    s->set(key, data, false);
     chunks.push_back(key);
   }
 
@@ -105,7 +107,7 @@ bool write_from_file(Session* s, std::string file, std::string dht_filename) {
     metadata->insert(metadata->end(), key_str.begin(), key_str.end());
     metadata->push_back('\0');
   }
-  s->set(metadata_key, metadata);
+  s->set(metadata_key, metadata, true);
   return true;
 }
 

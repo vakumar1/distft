@@ -1,4 +1,8 @@
-#include "client.h"
+#include <client.h>
+
+#include <iostream>
+#include <algorithm>
+#include <unistd.h>
 
 #define SUCCESS 0
 #define INTERNAL_ERROR 1

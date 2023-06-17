@@ -1,8 +1,16 @@
 #include "client.h"
 
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
+#include <fstream>
+#include <filesystem>
+#include <vector>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 // DAEMON MANAGEMENT
-
-
 
 // handle requests from client as a founder session
 void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints) {
@@ -25,19 +33,18 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
   client_state state;
   if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
     logger->info("START: failed to create new session.");
-    write_err(startup_client_id, static_cast<char>(true), state.cmd_err, state.cmd_out);
+    write_err(startup_client_id, static_cast<char>(true), state.get_cmd_err(), state.get_cmd_out());
     return;
   }
   logger->info("START: successfully started new session cluster.");
-  write_err(startup_client_id, static_cast<char>(false), state.cmd_err, state.cmd_out);
+  write_err(startup_client_id, static_cast<char>(false), state.get_cmd_err(), state.get_cmd_out());
   
   bool success;
   char cmd;
   char argc;
   std::vector<std::string> args;
   while (true) {
-    state.cmd_err.clear();
-    state.cmd_out.clear();
+    state.clear_cmd();
     int client_id;
     if (!read_cmd(client_id, cmd, argc, args)) {
       logger->error("Failed to read command from client. Skipping.\n");
@@ -62,7 +69,7 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
       logger->error("Read invalid cmd from pipe. Skipping.");
       continue;
     }
-    if (!write_err(client_id, static_cast<char>(!success), state.cmd_err, state.cmd_out)) {
+    if (!write_err(client_id, static_cast<char>(!success), state.get_cmd_err(), state.get_cmd_out())) {
       logger->error("Failed to write error to client. Skipping.\n");
     }
   }

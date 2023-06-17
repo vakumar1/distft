@@ -45,7 +45,7 @@ target_link_libraries(dht_grpc_proto PUBLIC
 # COMPILING DHT LIB
 set (CMAKE_CXX_FLAGS "-g")
 set (SOURCES router.cpp rpc.cpp session.cpp)
-set (HEADERS chunk.h router.h session.h)
+set (HEADERS router.h session.h)
 add_library(distft_dht ${SOURCES} ${HEADERS})
 
 target_include_directories(distft_dht 

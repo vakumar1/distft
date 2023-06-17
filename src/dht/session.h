@@ -1,7 +1,6 @@
 #pragma once
 
 #include "router.h"
-#include "chunk.h"
 #include <utils.h>
 
 #include <grpcpp/grpcpp.h>
@@ -44,7 +43,7 @@ private:
   session_metadata* meta;
   
   // node lookup algorithms
-  void publish(Chunk* chunk);
+  void publish(Chunk* chunk, bool force);
   void self_lookup(Key self_key);
   void node_lookup(Key node_key, std::deque<Peer>& buffer);
   bool value_lookup(Key chunk_key, std::deque<Peer>& buffer, std::vector<char>** data_buffer);
@@ -78,7 +77,7 @@ private:
   void refresh_peer_thread_fn();
   bool find_node(Peer* peer, Key& search_key, std::deque<Peer>& buffer);
   bool find_value(Peer* peer, Key& search_key, bool* found_value_buffer, std::deque<Peer>& buffer, std::vector<char>** data_buffer);
-  bool store(Peer* peer, Chunk* chunk);
+  bool store(Peer* peer, Chunk* chunk, bool force);
   bool ping(Peer* peer, Peer* receiver_peer_buffer);
 
   // helpers
@@ -106,7 +105,7 @@ public:
   void teardown(bool republish);
 
   // add chunk data to DHT
-  void set(Key key, std::vector<char>* data);
+  void set(Key key, std::vector<char>* data, bool force);
 
   // get value from DHT
   // returns false if key was not found

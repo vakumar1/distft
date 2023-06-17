@@ -63,7 +63,7 @@ void Session::teardown(bool republish) {
       this->router_lock.unlock();
       bool stored = false;
       for (Peer* other_peer : closest_peers) {
-        stored = stored || this->store(other_peer, chunk);
+        stored = stored || this->store(other_peer, chunk, false);
       }
       if (!stored) {
         spdlog::error("{} DROPPED CHUNK (NOT ENOUGH PEERS): CHUNK={}", hex_string(this->self_key()), hex_string(chunk_key));
@@ -85,15 +85,16 @@ void Session::teardown(bool republish) {
 }
 
 // publish a new chunk of data to the DHT
-void Session::set(Key key, std::vector<char>* data) {
+// force is set to force other peers to overwrite local copies of the key
+void Session::set(Key key, std::vector<char>* data, bool force) {
   Chunk* chunk = new Chunk(key, data, true, std::chrono::system_clock::now());
-  this->publish(chunk);
+  this->publish(chunk, force);
 }
 
 // publish a (new or old) chunk to the DHT
 // the chunk (and its data) may be deleted if it does not
 // need to be stored locally
-void Session::publish(Chunk* chunk) {
+void Session::publish(Chunk* chunk, bool force) {
   Key chunk_key = chunk->key;
   spdlog::debug("{} PUBLISH: CHUNK_KEY={}", hex_string(this->self_key()), 
                 hex_string(chunk_key));
@@ -105,7 +106,7 @@ void Session::publish(Chunk* chunk) {
   max_dist.value.reset();
   for (int i = 0; i < KBUCKET_MAX && i < buffer.size(); i++) {
     Peer other_peer = buffer.at(i);
-    this->store(&other_peer, chunk);
+    this->store(&other_peer, chunk, force);
     max_dist = std::max(max_dist, Dist(chunk->key, other_peer.key));
   }
 

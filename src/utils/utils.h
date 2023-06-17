@@ -66,6 +66,27 @@ struct StaticDistComparator {
   Key key;
 };
 
+//
+// Chunks
+//
+struct Chunk {
+  Chunk(Key key, std::vector<char>* data, bool original_publisher, 
+        std::chrono::time_point<std::chrono::system_clock> original_publish) {
+    this->key = key;
+    this->data = data;
+    this->original_publisher = original_publisher;
+    this->original_publish = original_publish;
+    this->last_published = std::chrono::system_clock::now();
+  }
+
+  bool original_publisher;
+  Key key;
+  std::vector<char>* data;
+  std::chrono::time_point<std::chrono::system_clock> last_published;
+  std::chrono::time_point<std::chrono::system_clock> original_publish;
+};
+
+
 
 // 
 // Session strain management

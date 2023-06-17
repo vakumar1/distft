@@ -67,7 +67,7 @@ void Session::republish_chunks_thread_fn() {
       spdlog::debug("{} REPUBLISH: CHUNK={}", hex_string(this->self_key()), hex_string(key));
       Chunk* chunk = this->chunks[key];
       this->chunks.erase(key);
-      this->publish(chunk);
+      this->publish(chunk, false);
     }
     this->chunks_lock.unlock();
   }
@@ -241,6 +241,9 @@ grpc::Status Session::Store(grpc::ServerContext* context,
   std::vector<char>* data = new std::vector<char>(request->data().data(), request->data().data() + size);
   Chunk* chunk = new Chunk(key, data, false, original_publish);
   this->chunks_lock.lock();
+  if (this->chunks.count(key) > 0) {
+    delete this->chunks[key];
+  }
   this->chunks[chunk->key] = chunk;
   this->chunks_lock.unlock();
   return grpc::Status::OK;
@@ -344,7 +347,7 @@ bool Session::find_value(Peer* peer, Key& search_key, bool* found_value_buffer, 
   return true;
 }
 
-bool Session::store(Peer* peer, Chunk* chunk) {
+bool Session::store(Peer* peer, Chunk* chunk, bool force) {
   // part i: initial storage request
   std::unique_ptr<dht::DHTService::Stub> stub = rpc_stub(peer);
   dht::StoreInitRequest init_request;
@@ -361,6 +364,11 @@ bool Session::store(Peer* peer, Chunk* chunk) {
   if (!status.ok()) {
     this->router->evict_peer(peer->key);
     return false;
+  }
+
+  // stop store if they already have the chunk and the store is not forced
+  if (!init_response.continue_store() && !force) {
+    return true;
   }
 
   // update receiver

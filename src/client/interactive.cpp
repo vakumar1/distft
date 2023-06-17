@@ -1,5 +1,7 @@
 #include "client.h"
 
+#include <iostream>
+
 // INTERACTIVE (LOOP) CLIENT
 int run_founder_session_interactive() {
   std::cout << "Enter >= 2 accessible endpoints for master server: ";
@@ -19,15 +21,14 @@ int run_founder_session_interactive() {
   client_state state;
   if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
     std::cout << "Error occurred in daemon while processing command. :(" << std::endl;
-    std::cout << state.cmd_err.c_str() << std::endl;
+    std::cout << state.get_cmd_err().c_str() << std::endl;
     return 0;
   }
 
   // client loop
   bool success;
   while (true) {
-    state.cmd_err.clear();
-    state.cmd_out.clear();
+    state.clear_cmd();
     std::cout << "> ";
     std::string line;
     std::getline(std::cin, line);
@@ -74,11 +75,11 @@ int run_founder_session_interactive() {
     if (!success) {
       std::cout << "Error occurred in daemon while processing command. :(" << std::endl;
     }
-    if (!state.cmd_err.empty()) {
-      std::cout << state.cmd_err.c_str() << std::endl;
+    if (!state.get_cmd_err().empty()) {
+      std::cout << state.get_cmd_err().c_str() << std::endl;
     }
-    if (!state.cmd_out.empty()) {
-      std::cout << state.cmd_out.c_str() << std::endl;
+    if (!state.get_cmd_out().empty()) {
+      std::cout << state.get_cmd_out().c_str() << std::endl;
     }
   }
   return 0;

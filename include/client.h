@@ -1,19 +1,6 @@
-#include <session.h>
-#include <utils.h>
-
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-
-#include <algorithm>
-#include <string>
-#include <streambuf>
-#include <fstream>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <chrono>
 #include <filesystem>
+#include <vector>
+#include <string>
 
 // INTERACTIVE
 int run_founder_session_interactive();
@@ -47,13 +34,14 @@ enum CMD {
   LOAD = 5,
 };
 struct client_state {
-  bool dying;
-  std::vector<std::string> endpoints;
-  std::vector<Session*> sessions;
-  std::vector<std::thread*> background_threads;
-  std::string cmd_err;
-  std::string cmd_out;
-  session_metadata* meta;
+  client_state();
+  ~client_state();
+  std::string get_cmd_err();
+  std::string get_cmd_out();
+  void clear_cmd();
+
+  struct client_state_data;
+  client_state_data* data;
 };
 bool bootstrap_cmd(client_state& state, std::vector<std::string> endpoints);
 bool start_background_strain_reliever_cmd(client_state& state);
@@ -63,10 +51,3 @@ bool list_cmd(client_state& state);
 bool store_cmd(client_state& state, std::vector<std::string> files);
 bool load_cmd(client_state& state, std::vector<std::string> input_files, std::string output_file);
 
-// FILES
-bool init_index_file(Session* s);
-bool add_files_to_index_file(Session* s, std::vector<std::string> files);
-bool get_index_files(Session* s, std::vector<std::string>& files_buffer);
-bool write_from_file(Session* s, std::string file, std::string dht_filename);
-bool read_in_files(Session* s, std::vector<std::string> files, std::vector<char>** file_data_buffer);
-bool file_exists(Session* s, std::string dht_filename);
