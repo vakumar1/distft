@@ -18,17 +18,17 @@ int run_founder_session_interactive() {
     return 0;
   }
   
-  client_state state;
-  if (!bootstrap_cmd(state, endpoints) || !start_background_strain_reliever_cmd(state)) {
+  CommandControl ctrl = CommandControl();
+  if (!ctrl.bootstrap_cmd(endpoints) || !ctrl.start_background_strain_reliever_cmd()) {
     std::cout << "Error occurred in daemon while processing command. :(" << std::endl;
-    std::cout << state.get_cmd_err().c_str() << std::endl;
+    std::cout << ctrl.get_cmd_err().c_str() << std::endl;
     return 0;
   }
 
   // client loop
   bool success;
   while (true) {
-    state.clear_cmd();
+    ctrl.clear_cmd();
     std::cout << "> ";
     std::string line;
     std::getline(std::cin, line);
@@ -43,7 +43,7 @@ int run_founder_session_interactive() {
     } else if (tokens[0] == "help") {
       std::cout << interactive_commands().c_str() << std::endl;
     } else if (tokens[0] == "list") {
-      success = list_cmd(state);
+      success = ctrl.list_cmd();
     } else if (tokens[0] == "store") {
       if (tokens.size() < 2) {
         std::cout << "Please provide file(s) to add." << std::endl;
@@ -53,7 +53,7 @@ int run_founder_session_interactive() {
       for (int i = 1; i < tokens.size(); i++) {
         files.push_back(tokens[i]);
       }
-      success = store_cmd(state, files);
+      success = ctrl.store_cmd(files);
     } else if (tokens[0] == "load") {
       if (tokens.size() < 3) {
         std::cout << "Please provide file to print/file to write to." << std::endl;
@@ -64,9 +64,9 @@ int run_founder_session_interactive() {
         files.push_back(tokens[i]);
       }
       std::string output_file = tokens.back();
-      success = load_cmd(state, files, output_file);
+      success = ctrl.load_cmd(files, output_file);
     } else if (tokens[0] == "exit") {
-      exit_cmd(state);
+      ctrl.exit_cmd();
       exit(0);
     } else {
       std::cout << "Enter a valid command. Enter `help` for all commands." << std::endl;
@@ -75,11 +75,11 @@ int run_founder_session_interactive() {
     if (!success) {
       std::cout << "Error occurred in daemon while processing command. :(" << std::endl;
     }
-    if (!state.get_cmd_err().empty()) {
-      std::cout << state.get_cmd_err().c_str() << std::endl;
+    if (!ctrl.get_cmd_err().empty()) {
+      std::cout << ctrl.get_cmd_err().c_str() << std::endl;
     }
-    if (!state.get_cmd_out().empty()) {
-      std::cout << state.get_cmd_out().c_str() << std::endl;
+    if (!ctrl.get_cmd_out().empty()) {
+      std::cout << ctrl.get_cmd_out().c_str() << std::endl;
     }
   }
   return 0;
