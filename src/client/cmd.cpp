@@ -39,19 +39,18 @@ bool CommandControl::bootstrap_cmd(std::vector<std::string> endpoints) {
   this->data->dying = false;
   this->data->endpoints = endpoints;
   this->data->meta = new session_metadata;
-  std::vector<std::thread*> threads;
+  std::vector<std::thread> threads;
 
   // startup sessions
   for (int i = 0; i < this->data->endpoints.size(); i++) {
     Session* s = new Session;
     this->data->sessions.push_back(s);
-    threads.push_back(new std::thread([this](Session* s, std::string my_ep, std::string other_ep) {
+    threads.push_back(std::thread([this](Session* s, std::string my_ep, std::string other_ep) {
       s->startup(this->data->meta, my_ep, other_ep);
     }, s, endpoints[i], endpoints[(i + 1) % endpoints.size()]));
   }
   while (threads.size() > 0) {
-    threads.back()->join();
-    delete threads.back();
+    threads.back().join();
     threads.pop_back();
   }
 
@@ -155,11 +154,13 @@ bool CommandControl::load_cmd(std::vector<std::string> input_files, std::string 
   }
   std::ofstream file(output_file, std::ios::out | std::ios::binary);
   if (!file) {
+    delete buffer;
     this->data->cmd_err = "Failed to open output file " + output_file;
     return false;
   }
   file.write(buffer->data(), buffer->size());
   file.close();
+  delete buffer;
   this->data->cmd_out = "Successfully loaded all files into output file " + output_file;
   return true;
 }
@@ -173,16 +174,15 @@ void CommandControl::exit_cmd() {
     delete this->data->background_threads.back();
     this->data->background_threads.pop_back();
   }
-  std::vector<std::thread*> threads;
+  std::vector<std::thread> threads;
   for (int i = 0; i < this->data->sessions.size(); i++) {
-    threads.push_back(new std::thread([](Session* s) {
+    threads.push_back(std::thread([](Session* s) {
       s->teardown(false);
       delete s;
     }, this->data->sessions[i]));
   }
   while (threads.size() > 0) {
-    threads.back()->join();
-    delete threads.back();
+    threads.back().join();
     threads.pop_back();
   }
   delete this->data->meta;
