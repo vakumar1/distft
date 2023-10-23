@@ -1,7 +1,7 @@
-dependencies/
 CMakeFiles/
-build/
 .vscode/
+
+bazel-*
 
 logs.txt
 *.a
