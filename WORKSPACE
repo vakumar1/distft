@@ -27,11 +27,19 @@ rules_cc_toolchains()
 # GRPC DEP
 http_archive(
     name = "com_github_grpc_grpc",
-    strip_prefix = "grpc-1.45.0",
-    sha256 = "ec19657a677d49af59aa806ec299c070c882986c9fcc022b1c22c2a3caf01bcd",
-    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.45.0.tar.gz"],
+    strip_prefix = "grpc-1.50.1",
+    # sha256 = "ec19657a677d49af59aa806ec299c070c882986c9fcc022b1c22c2a3caf01bcd",
+    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.1.tar.gz"],
 )
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 grpc_deps()
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 grpc_extra_deps()
+
+# SPDLOG DEP
+http_archive(
+    name = "com_github_gabime_spdlog",
+    build_file = "//:spdlog.BUILD",
+    strip_prefix = "spdlog-1.12.0",
+    urls = ["https://github.com/gabime/spdlog/archive/refs/tags/v1.12.0.tar.gz"],
+)

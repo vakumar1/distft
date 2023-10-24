@@ -1,11 +1,13 @@
 #pragma once
 
 #include "router.h"
-#include <utils.h>
+
+#include "src/utils/utils.h"
+
+#include "src/dht/dht.pb.h"
+#include "src/dht/dht.grpc.pb.h"
 
 #include <grpcpp/grpcpp.h>
-#include "dht.pb.h"
-#include "dht.grpc.pb.h"
 #include <spdlog/spdlog.h>
 
 #include <unordered_map>
