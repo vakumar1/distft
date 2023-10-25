@@ -1,8 +1,8 @@
-#include "client.h"
-#include "file.h"
+#include "src/client/client.h"
+#include "src/client/file.h"
 
-#include <session.h>
-#include <utils.h>
+#include "src/dht/session.h"
+#include "src/utils/utils.h"
 
 #include <filesystem>
 

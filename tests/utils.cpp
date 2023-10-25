@@ -1,8 +1,8 @@
-#include "tests.h"
+#include "tests/tests.h"
 
-#include <file.h>
-#include <session.h>
-#include <utils.h>
+#include "src/client/file.h"
+#include "src/dht/session.h"
+#include "src/utils/utils.h"
 
 session_metadata dummy_meta;
 

@@ -1,4 +1,4 @@
-#include "tests.h"
+#include "tests/tests.h"
 
 #include <spdlog/spdlog.h>
 #include <string>

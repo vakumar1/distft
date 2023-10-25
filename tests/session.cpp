@@ -1,6 +1,6 @@
-#include "tests.h"
+#include "tests/tests.h"
 
-#include <session.h>
+#include "src/dht/session.h"
 
 #include <spdlog/spdlog.h>
 #include <vector>

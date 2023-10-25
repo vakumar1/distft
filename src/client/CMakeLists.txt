@@ -19,9 +19,8 @@ set (CMAKE_CXX_FLAGS "-g")
 
 # Compile file lib
 set (SOURCES file.cpp)
-set (HEADERS ${DISTFT_ROOT}/include/file.h)
+set (HEADERS file.h)
 add_library(distft_file ${SOURCES} ${HEADERS})
-target_include_directories(distft_file PUBLIC ${DISTFT_ROOT}/include/)
 target_link_libraries(distft_file 
 PRIVATE 
   distft_dht
@@ -30,12 +29,11 @@ PRIVATE
 
 # Compile client lib
 set (SOURCES cmd.cpp daemon.cpp interactive.cpp)
-set (HEADERS ${DISTFT_ROOT}/include/client.h)
+set (HEADERS client.h)
 add_library(distft_client ${SOURCES} ${HEADERS})
 
 # Link dependencies
 set(SRC_DIR ${DISTFT_ROOT}/src)
-target_include_directories(distft_client PUBLIC ${DISTFT_ROOT}/include/)
 target_link_libraries(distft_client 
 PRIVATE
   distft_file

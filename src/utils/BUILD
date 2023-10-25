@@ -9,5 +9,9 @@ cc_library(
         "utils.h"
     ],
     deps = [],
-    visibility = ["//src/dht:__pkg__"],
+    visibility = [
+        "//src/dht:__pkg__",
+        "//src/client:__pkg__",
+        "//tests:__pkg__",
+    ],
 )

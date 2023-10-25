@@ -19,6 +19,10 @@ cc_library(
         "@com_github_gabime_spdlog//:spdlog",
         "@com_github_grpc_grpc//:grpc++"
     ],
+    visibility = [
+        "//src/client:__pkg__",
+        "//tests:__pkg__",
+    ],
 )
 
 cc_grpc_library(

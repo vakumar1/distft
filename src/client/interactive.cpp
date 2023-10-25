@@ -1,6 +1,7 @@
-#include "client.h"
+#include "src/client/client.h"
 
 #include <iostream>
+#include <sstream>
 
 // INTERACTIVE (LOOP) CLIENT
 int run_founder_session_interactive() {
