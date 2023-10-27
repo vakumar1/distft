@@ -52,7 +52,7 @@ private:
   void lookup_helper(Key search_key, std::deque<Peer>& closest_peers, const std::function<bool(Peer&, std::mutex&, unsigned int&)>& query_fn);
 
   // RPC handlers
-  void init_server(std::string server_address);
+  void init_server(std::string server_address, std::string port);
   void shutdown_server();
   void handler_thread_fn();
   grpc::Status FindNode(grpc::ServerContext* context, 

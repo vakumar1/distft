@@ -1,5 +1,7 @@
 #include "session.h"
 
+#include <regex>
+
 //
 // SESSION API
 //
@@ -26,8 +28,12 @@ void Session::startup(session_metadata* parent_metadata, std::string self_endpoi
   this->router_lock.unlock();
 
   // start server RPC threads running in background
-  this->init_server(self_endpoint);
-  this->init_rpc_threads();  
+  std::regex pattern(R"((.*):(\d+))");
+  std::smatch match;
+  std::regex_match(self_endpoint, match, pattern);
+  std::string port = match[2];
+  this->init_server(self_endpoint, port);
+  this->init_rpc_threads();
 
   // ping peer for correct key (and remove dummy peer from router)
   while (!this->ping(&other_peer, &other_peer));

@@ -5,9 +5,10 @@
 //
 
 // start running the server RPC handler thread
-void Session::init_server(std::string server_address) {
+void Session::init_server(std::string server_address, std::string port) {
   grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  std::string serving_endpoint = "0.0.0.0:" + port;
+  builder.AddListeningPort(serving_endpoint, grpc::InsecureServerCredentials());
   builder.RegisterService(this);
   this->server = builder.BuildAndStart();
   this->server_thread = std::thread(&Session::handler_thread_fn, this);

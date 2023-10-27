@@ -1,4 +1,10 @@
 #! /bin/bash
 
-bazel run //src/client:distft_founder -- start localhost:8000 localhost:8001
+endpoints=""
+IFS=" " read -ra port_array <<< "$PORTS"
+for port in "${port_array[@]}"; do
+    endpoints+="$ADDRESS:$port "
+done
+
+bazel run //src/client:distft_founder -- start $endpoints
 sleep infinity

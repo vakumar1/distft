@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unistd.h>
+#include <regex>
 
 #define SUCCESS 0
 #define INTERNAL_ERROR 1
@@ -19,6 +20,12 @@ void print_result(bool err, std::string err_msg, std::string succ_msg) {
   if (!succ_msg.empty()) {
     std::cout << succ_msg.c_str() << std::endl;
   }
+}
+
+bool valid_endpoint(const std::string& ep) {
+    std::regex pattern(R"((.*):(\d+))");
+    std::smatch match;
+    return std::regex_match(ep, match, pattern);
 }
 
 int handle_start(std::vector<std::string> endpoints) {
@@ -155,6 +162,11 @@ int main(int argc, char* argv[]) {
     }
     std::vector<std::string> endpoints;
     for (int i = 2; i < argc; i++) {
+      std::string ep(argv[i]);
+      if (!valid_endpoint(ep)) {
+        std::cout << "Endpoint invalid: must have the form <address>:<port>" << std::endl;
+        return USER_ERROR;
+      }
       endpoints.push_back(std::string(argv[i]));
     }
     return handle_start(endpoints);
