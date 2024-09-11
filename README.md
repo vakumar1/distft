@@ -1,12 +1,7 @@
-DOCKER CMDS:
+## Distft - File storage and retrieval across multiple nodes
 
-build:
-
-docker build -t distft_docker .
-
-run (locally on a single network):
-
-docker network create distft_network
-docker run -d -v ~/.cache:/root/.cache -p 8000:8000 --name distft_founder1 --network distft_network -e "ADDRESS=localhost" -e "PORTS=8000 8001" distft_docker
-docker run -d -v ~/.cache:/root/.cache -p 8002:8002 --name distft_founder2 --network distft_network -e "ADDRESS=localhost" -e "PORTS=8002 8003 8005" distft_docker
-etc.
+I've added a set of explainers below for the overall design of the Kademlia DHT underlying the Distft application. The application itself runs as a daemon and can be deployed (locally at least) with the provided Dockerfile - the executable may be built locally and copied into the docker image, or the application will build the executable within the docker container (either works)
+- [x] ![Building Something Like BitTorrent Part 1: Introduction to (Modified) Kademlia](https://hackmd.io/XIFryxXUQWKk_EpLAWIhTQ)
+- [x] ![Building Something Like BitTorrent Part 2: The Router](https://hackmd.io/JVOiM8K1Q7WC4mAAnZWJZQ)
+- [x] ![Building Something Like BitTorrent Part 3: The RPC Interface](https://hackmd.io/uIFFoIzYS9qkBxsiYnVRSA)
+- [ ] ![Building Something Like BitTorrent Part 4: The Search Algorithm + The DHT Interface (Again)](https://hackmd.io/bF0SLYNxTui70ph98-0WNg)
