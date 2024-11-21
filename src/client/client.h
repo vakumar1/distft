@@ -2,8 +2,13 @@
 #include <vector>
 #include <string>
 
+#define SUCCESS 0
+#define INTERNAL_ERROR 1
+#define USER_ERROR 2
+
 // INTERACTIVE API
 int run_founder_session_interactive();
+int run_transient_interactive();
 std::string interactive_commands();
 
 // DAEMON API
@@ -14,6 +19,7 @@ std::string interactive_commands();
 
 void setup_daemon();
 void run_founder_session_daemon(int startup_client_id, std::vector<std::string> endpoints);
+void run_transient_session_daemon(int startup_client_id, std::string remote_endpoint, std::string local_endpoint);
 bool read_cmd(int& client_id, char& cmd, char& argc, std::vector<std::string>& args);
 bool write_err(int client_id, char err, std::string err_msg, std::string succ_msg);
 bool write_cmd(int session_id, char cmd, char argc, std::vector<std::string> args);

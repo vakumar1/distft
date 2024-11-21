@@ -5,10 +5,6 @@
 #include <unistd.h>
 #include <regex>
 
-#define SUCCESS 0
-#define INTERNAL_ERROR 1
-#define USER_ERROR 2
-
 // daemon command handlers
 void print_result(bool err, std::string err_msg, std::string succ_msg) {
   if (static_cast<bool>(err)) {
@@ -128,15 +124,6 @@ int main(int argc, char* argv[]) {
     }
   }
   if (help) {
-    std::string help = 
-    R"(help: print all commands
-      start <endpoint 1> ... <endpoint n>: create a new session cluster with at least 2 endpoints (prints out the session id)
-      list <session id>: print all files
-      store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
-      load <session id> <file name 1> ... <file name n> <file path>: write the content of file name(s) to local file path
-      exit <session id>: exit the session
-      ** only include a session id if in non-interactive mode and working with a running daemon
-    )";
     std::cout << daemon_commands().c_str() << std::endl;
     return SUCCESS;
   }
@@ -170,6 +157,8 @@ int main(int argc, char* argv[]) {
       endpoints.push_back(std::string(argv[i]));
     }
     return handle_start(endpoints);
+
+    
   } else if (cmd == "exit") {
     if (argc < 3) {
       std::cout << "Provide session id for a running founder client." << std::endl;

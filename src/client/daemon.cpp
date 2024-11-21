@@ -74,6 +74,66 @@ void run_founder_session_daemon(int startup_client_id, std::vector<std::string> 
   }
 }
 
+// handle requests from client as a transient session
+void run_transient_session_daemon(int startup_client_id, std::string remote_endpoint, std::string local_endpoint) {
+  int session_id = getpid();
+  
+  // wait until log, cmd, and error pipes exist (wait for max of 1 min.)
+  for (int i = 0; i < 60; i++) {
+    if (std::filesystem::exists(LOGS_FILE(session_id)) &&
+        std::filesystem::exists(CMD_FILE(session_id)) &&
+        std::filesystem::exists(ERR_FILE(session_id))) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+  std::string logger_name = std::string("logger") + std::to_string(session_id);
+  auto logger = spdlog::basic_logger_mt(logger_name, LOGS_FILE(session_id));
+  logger->flush_on(spdlog::level::err);
+
+  // join the session cluster
+  CommandControl ctrl = CommandControl();
+  if (!ctrl.join_cmd(local_endpoint, remote_endpoint)) {
+    logger->info("START: failed to join session.");
+    write_err(startup_client_id, static_cast<char>(true), ctrl.get_cmd_err(), ctrl.get_cmd_out());
+    return;
+  }
+  logger->info("START: successfully started new session cluster.");
+  write_err(startup_client_id, static_cast<char>(false), ctrl.get_cmd_err(), ctrl.get_cmd_out());
+  
+  bool success;
+  char cmd;
+  char argc;
+  std::vector<std::string> args;
+  while (true) {
+    ctrl.clear_cmd();
+    int client_id;
+    if (!read_cmd(client_id, cmd, argc, args)) {
+      logger->error("Failed to read command from client. Skipping.\n");
+      continue;
+    }
+    if (cmd == EXIT) {
+      logger->info("EXIT: tearing down session");
+      ctrl.exit_cmd();
+      exit(0);
+    } else if (cmd == LIST) {
+      logger->info("LIST: logging index file contents");
+      success = ctrl.list_cmd();
+    } else if (cmd == LOAD) {
+      logger->info("LOAD: loading files from session");
+      std::string output_file = args.back();
+      args.pop_back();
+      success = ctrl.load_cmd(args, output_file);
+    } else {
+      logger->error("Read invalid cmd from pipe. Skipping.");
+      continue;
+    }
+    if (!write_err(client_id, static_cast<char>(!success), ctrl.get_cmd_err(), ctrl.get_cmd_out())) {
+      logger->error("Failed to write error to client. Skipping.\n");
+    }
+  }
+}
+
 // setup the daemon
 void setup_daemon() {
   setsid() < 0;
@@ -302,7 +362,7 @@ std::string daemon_commands() {
   -h/--help: print all commands
   start <endpoint 1> ... <endpoint n>: create a new session cluster with at least 2 endpoints (prints out the session id)
   list <session id>: print all files
-  store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
+  [RESTRICTED TO FOUNDERS] store <session id> <file path 1> ... <file path n>: add file(s) at local file path(s) to session
   load <session id> <file name 1> ... <file name n> <file path>: write the content of file name(s) to local file path
   exit <session id>: exit the session
 )";

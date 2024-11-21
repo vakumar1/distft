@@ -5,3 +5,4 @@ bazel-*
 
 logs.txt
 *.a
+MODULE.bazel.lock

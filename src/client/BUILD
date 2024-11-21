@@ -43,3 +43,13 @@ cc_binary(
         ":client_lib",
     ],
 )
+
+cc_binary(
+    name = "distft_transient",
+    srcs = [
+        "transient.cpp",
+    ],
+    deps = [
+        ":client_lib",
+    ],
+)
